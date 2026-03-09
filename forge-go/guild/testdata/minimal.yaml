@@ -1,0 +1,8 @@
+id: "minimal-01"
+name: "Minimal Guild"
+description: "A minimal guild"
+agents:
+  - id: "agent-01"
+    name: "Agent One"
+    description: "First agent"
+    class_name: "rustic_ai.agents.EchoAgent"

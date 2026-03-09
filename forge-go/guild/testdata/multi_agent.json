@@ -1,0 +1,19 @@
+{
+  "id": "multi-01",
+  "name": "Multi Agent Guild",
+  "description": "JSON guild",
+  "agents": [
+    {
+      "id": "a1",
+      "name": "Agent A",
+      "description": "Desc A",
+      "class_name": "A"
+    },
+    {
+      "id": "b2",
+      "name": "Agent B",
+      "description": "Desc B",
+      "class_name": "B"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+id: "full-01"
+name: "Full Guild"
+description: "A full guild"
+properties:
+  execution_engine: "rustic_ai.forge.ForgeExecutionEngine"
+  messaging:
+    backend_module: "redis_module"
+    backend_class: "RedisBackend"
+    backend_config:
+      url: "redis://localhost:6379"
+agents:
+  - id: "agent-full-01"
+    name: "Full Agent"
+    description: "An agent with all fields"
+    class_name: "rustic_ai.agents.FullAgent"
+    additional_topics: ["topic1", "topic2"]
+    properties:
+      custom_key: "custom_value"
+    listen_to_default_topic: false
+    act_only_when_tagged: true
+    resources:
+      num_cpus: 2.0
+      num_gpus: 0.5
+      custom_resources:
+        memory-gb: 8
+    qos:
+      timeout: 30
+      retry_count: 3
+      latency: 100
+    additional_dependencies: ["dep1", "dep2"]
+dependency_map:
+  file_system:
+    class_name: "LocalFileSystem"
+    properties:
+      base_path: "/tmp"
+routes:
+  steps:
+    - agent:
+        id: "abc"
+        name: "AgentXYZ"
+      route_times: 3
+      mark_forwarded: true
+      transformer:
+        style: "content_based_router"
+        handler: |
+          (
+            $timestamp := $millis();
+            $random_value := $random();
+            { "payload": $random_value }
+          )
+      agent_state_update:
+        counter: "$number(counter) + 1"
+      guild_state_update:
+        global_counter: "$number(global_counter) + 1"
+gateway:
+  enabled: true
+  input_formats: ["text"]
+  output_formats: ["json"]

@@ -1,0 +1,85 @@
+package protocol
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/redis/go-redis/v9"
+	"github.com/rustic-ai/forge/forge-go/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+)
+
+type JSONB map[string]interface{}
+
+type SpawnRequest struct {
+	RequestID        string            `json:"request_id"`
+	OrganizationID   string            `json:"organization_id,omitempty"`
+	GuildID          string            `json:"guild_id"`
+	AgentSpec        AgentSpec         `json:"agent_spec"`
+	MessagingConfig  *MessagingConfig  `json:"messaging_config,omitempty"`
+	MachineID        int               `json:"machine_id,omitempty"`
+	ClientType       string            `json:"client_type,omitempty"`
+	ClientProperties JSONB             `json:"client_properties,omitempty"`
+	TraceContext     map[string]string `json:"trace_context,omitempty"`
+}
+
+type StopRequest struct {
+	RequestID      string `json:"request_id"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	GuildID        string `json:"guild_id"`
+	AgentID        string `json:"agent_id"`
+}
+
+type SpawnResponse struct {
+	RequestID string `json:"request_id"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message,omitempty"`
+	NodeID    string `json:"node_id,omitempty"`
+	PID       int    `json:"pid,omitempty"`
+}
+
+type StopResponse struct {
+	RequestID string `json:"request_id"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message,omitempty"`
+}
+
+type ErrorResponse struct {
+	RequestID string `json:"request_id"`
+	Success   bool   `json:"success"`
+	Error     string `json:"error"`
+}
+
+func PushSpawnRequest(ctx context.Context, rdb *redis.Client, req SpawnRequest) error {
+	ctx, span := otel.Tracer("forge.control").Start(ctx, "redis.publish")
+	defer span.End()
+
+	if req.TraceContext == nil {
+		req.TraceContext = make(map[string]string)
+	}
+	propagator := otel.GetTextMapPropagator()
+	propagator.Inject(ctx, propagation.MapCarrier(req.TraceContext))
+
+	wrapper := map[string]interface{}{
+		"command": "spawn",
+		"payload": req,
+	}
+
+	data, err := json.Marshal(wrapper)
+	if err != nil {
+		return fmt.Errorf("serialize spawn request wrapper: %w", err)
+	}
+
+	queueName := "forge:control:requests"
+
+	if err := rdb.LPush(ctx, queueName, data).Err(); err != nil {
+		telemetry.QueueProcessingErrorsTotal.WithLabelValues(queueName, "spawn", "lpush_failed").Inc()
+		return fmt.Errorf("lpush to %s: %w", queueName, err)
+	}
+
+	telemetry.QueuePublishTotal.WithLabelValues(queueName, "spawn").Inc()
+
+	return nil
+}

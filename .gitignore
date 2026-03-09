@@ -1,0 +1,92 @@
+# OS/General
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+._*
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Go
+bin/
+dist/
+/forge
+/forge-go/forge
+vendor/
+coverage.txt
+coverage.out
+*.test
+*.out.test
+
+# Virtual Environments (Python / General)
+venv/
+.venv/
+env/
+.env/
+.e2e_venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyc
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+*.manifest
+*.spec
+
+# Python Testing / Coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Python Linting and Type Checking
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# Logs
+*.log
+
+*.db
+*.rdb
+
+**/.gocache/
+
+.claude/
+CLAUDE.md
+AGENTS.md

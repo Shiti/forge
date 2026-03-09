@@ -1,0 +1,351 @@
+entries:
+- id: TestEchoAgent
+  class_name: rustic_ai.core.agents.testutils.echo_agent.EchoAgent
+  description: Echoes messages back for testing
+  runtime: uvx
+  package: rusticai-core
+- id: GuildManagerAgent
+  class_name: rustic_ai.forge.agents.system.guild_manager_agent.GuildManagerAgent
+  description: System agent for managing Guild lifecycles
+  runtime: uvx
+- id: BasicWiringAgent
+  class_name: rustic_ai.core.agents.eip.basic_wiring_agent.BasicWiringAgent
+  description: Testing Agent for P2P wiring
+  runtime: uvx
+  package: rusticai-core
+- id: SplitterAgent
+  class_name: rustic_ai.core.agents.eip.splitter_agent.SplitterAgent
+  description: Testing Agent for splitters
+  runtime: uvx
+  package: rusticai-core
+- id: GoogleResearchAgent
+  class_name: rustic_ai.vertexai.agents.google_research_agent.GoogleResearchAgent
+  description: Google Search grounding agent
+  runtime: uvx
+  package: rusticai-vertexai
+  secrets:
+  - VERTEXAI_PROJECT
+  - VERTEXAI_LOCATION
+- id: ContentModerationAgent
+  class_name: rustic_ai.vertexai.agents.content_moderation.ContentModerationAgent
+  description: Vertex AI content moderation
+  runtime: uvx
+  package: rusticai-vertexai
+  secrets:
+  - VERTEXAI_PROJECT
+  - VERTEXAI_LOCATION
+- id: VertexAiImagenAgent
+  class_name: rustic_ai.vertexai.agents.image_generation.VertexAiImagenAgent
+  description: Vertex AI Imagen generation
+  runtime: uvx
+  package: rusticai-vertexai
+  secrets:
+  - VERTEXAI_PROJECT
+  - VERTEXAI_LOCATION
+- id: LLMAgent
+  class_name: rustic_ai.llm_agent.llm_agent.LLMAgent
+  description: Generic LLM Interaction Agent (supports OpenAI, Anthropic, Gemini,
+    o3, etc.)
+  runtime: uvx
+  package: rusticai-llm-agent
+  secrets:
+  - OPENAI_API_KEY
+  - ANTHROPIC_API_KEY
+  - GEMINI_API_KEY
+- id: ReActAgent
+  class_name: rustic_ai.llm_agent.react.react_agent.ReActAgent
+  description: ReAct loop reasoning agent
+  runtime: uvx
+  package: rusticai-llm-agent
+  secrets:
+  - OPENAI_API_KEY
+  - ANTHROPIC_API_KEY
+  - GEMINI_API_KEY
+- id: ClaudeCodeAgent
+  class_name: rustic_ai.claude.agent.ClaudeCodeAgent
+  description: Claude specialized coding agent
+  runtime: uvx
+  package: rusticai-claude
+  secrets:
+  - ANTHROPIC_API_KEY
+- id: MCPAgent
+  class_name: rustic_ai.mcp.agent.MCPAgent
+  description: Model Context Protocol Agent
+  runtime: uvx
+  package: rusticai-mcp
+- id: SERPAgent
+  class_name: rustic_ai.serpapi.agent.SERPAgent
+  description: SERP API Web Search Agent
+  runtime: uvx
+  package: rusticai-serpapi
+  secrets:
+  - SERPAPI_API_KEY
+- id: LiteLLMAgent
+  class_name: rustic_ai.litellm.agent.LiteLLMAgent
+  description: Provider-agnostic LLM Agent via LiteLLM router
+  runtime: uvx
+  package: rusticai-litellm
+  secrets:
+  - LITELLM_API_KEY
+  - OPENAI_API_KEY
+  - ANTHROPIC_API_KEY
+- id: PlaywrightScraperAgent
+  class_name: rustic_ai.playwright.agent.PlaywrightScraperAgent
+  description: Headless browser scraping agent
+  runtime: uvx
+  package: rusticai-playwright
+- id: MarvinClassifier
+  class_name: rustic_ai.marvin.classifier_agent.MarvinAgent
+  description: Marvin-based text classifier
+  runtime: uvx
+  package: rusticai-marvin
+- id: AggregatingAgent
+  class_name: rustic_ai.core.agents.eip.aggregating_agent.AggregatingAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: KnowledgeAgent
+  class_name: rustic_ai.core.agents.indexing.knowledge_agent.KnowledgeAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: VectorAgent
+  class_name: rustic_ai.core.agents.indexing.vector_agent.VectorAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: SimpleLLMAgent
+  class_name: rustic_ai.core.agents.llm.simple_llm_agent.SimpleLLMAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: TodoListAgent
+  class_name: rustic_ai.core.agents.planners.todolist_agent.TodoListAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: EssentialProbeAgent
+  class_name: rustic_ai.core.agents.testutils.probe_agent.EssentialProbeAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: ProbeAgent
+  class_name: rustic_ai.core.agents.testutils.probe_agent.ProbeAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: UiComponentAgent
+  class_name: rustic_ai.core.agents.testutils.ui_component_agent.UiComponentAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: UserProxyAgent
+  class_name: rustic_ai.core.agents.utils.user_proxy_agent.UserProxyAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: BoundaryAgent
+  class_name: rustic_ai.core.guild.g2g.boundary_agent.BoundaryAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: EnvoyAgent
+  class_name: rustic_ai.core.guild.g2g.envoy_agent.EnvoyAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: GatewayAgent
+  class_name: rustic_ai.core.guild.g2g.gateway_agent.GatewayAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-core
+- id: AskQuestionAgent
+  class_name: rustic_ai.demos.agents.bom_risk_explorer.ask_question_agent.AskQuestionAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: ComplianceScanAgent
+  class_name: rustic_ai.demos.agents.contract_copilot.compliance_scan_agent.ComplianceScanAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: RedlineDiffAgent
+  class_name: rustic_ai.demos.agents.contract_copilot.redline_diff_agent.RedlineDiffAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: CSVDataAgent
+  class_name: rustic_ai.demos.agents.csv.csv_data_agent.CSVDataAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: ForecastingAgent
+  class_name: rustic_ai.demos.agents.forecasting.prophet.ForecastingAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: BeautifulSoupAgent
+  class_name: rustic_ai.demos.agents.html_parser.beautiful_soup_agent.BeautifulSoupAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: LifecycleScorerAgent
+  class_name: rustic_ai.demos.agents.obsolescence_radar.lifecycle_scorer_agent.LifecycleScorerAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: ProductRiskCalculatorAgent
+  class_name: rustic_ai.demos.agents.obsolescence_radar.product_risk_calculator_agent.ProductRiskCalculatorAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: ReplacementFinderAgent
+  class_name: rustic_ai.demos.agents.obsolescence_radar.replacement_finder_agent.ReplacementFinderAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: OCRAgent
+  class_name: rustic_ai.demos.agents.ocr.tesseract_agent.OCRAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: FileReaderWriterAgent
+  class_name: rustic_ai.demos.agents.preprocessing.file_reader_writer_agent.FileReaderWriterAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: ImageAgent
+  class_name: rustic_ai.demos.agents.preprocessing.image_agent.ImageAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: PandasAgent
+  class_name: rustic_ai.demos.agents.preprocessing.pandas_agent.PandasAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: CPQAgent
+  class_name: rustic_ai.demos.agents.quote_ai.cpq_integration_agent.CPQAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: OptimizerAgent
+  class_name: rustic_ai.demos.agents.quote_ai.optimizer_agent.OptimizerAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: ReportGeneratorAgent
+  class_name: rustic_ai.demos.agents.report_generator.report_agent.ReportGeneratorAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: HunterIOAgent
+  class_name: rustic_ai.demos.agents.research.hunter_io_agent.HunterIOAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: RFQAssistManager
+  class_name: rustic_ai.demos.agents.rfq_assist.manager.RFQAssistManager
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: ClockAgent
+  class_name: rustic_ai.demos.agents.simulation.clock_agent.ClockAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: DynamicRoutingAgent
+  class_name: rustic_ai.demos.agents.simulation.dynamic_router_agent.DynamicRoutingAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: StatusTrackerAgent
+  class_name: rustic_ai.demos.agents.simulation.status_tracker_agent.StatusTrackerAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: StoryImageAgent
+  class_name: rustic_ai.demos.agents.story_telling.image_agent.StoryImageAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: LiteLLMAgentWithContext
+  class_name: rustic_ai.demos.agents.story_telling.lite_llm_agent_with_context.LiteLLMAgentWithContext
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: SyncMarvinAgent
+  class_name: rustic_ai.demos.agents.story_telling.sync_classifier_agent.SyncMarvinAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: LineageBuilderAgent
+  class_name: rustic_ai.demos.agents.traceability.lineage_builder_agent.LineageBuilderAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: VegaLiteAgent
+  class_name: rustic_ai.demos.agents.viz.vegalite_agent.VegaLiteAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-demos
+- id: AutonomousCFO
+  class_name: rustic_ai.fiscal_eye.data_analyst.autonomous_cfo.AutonomousCFO
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-fiscal-eye
+- id: FiscalDataAnalystAgent
+  class_name: rustic_ai.fiscal_eye.data_analyst.fiscal_data_analyst_agent.FiscalDataAnalystAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-fiscal-eye
+- id: Image2ImageAgent
+  class_name: rustic_ai.huggingface.agents.diffusion.pix2pix.Image2ImageAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-huggingface
+- id: RunwaymlStableDiffusionAgent
+  class_name: rustic_ai.huggingface.agents.diffusion.stable_diffusion_agent.RunwaymlStableDiffusionAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-huggingface
+- id: LLMPhiAgent
+  class_name: rustic_ai.huggingface.agents.llm.phi_agent.LLMPhiAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-huggingface
+- id: SquadAgent
+  class_name: rustic_ai.huggingface.agents.nlp.squad_agent.SquadAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-huggingface
+- id: SpeechT5TTSAgent
+  class_name: rustic_ai.huggingface.agents.text_to_speech.speecht5_tts_agent.SpeechT5TTSAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-huggingface
+- id: DataAnalystAgent
+  class_name: rustic_ai.pandas_data_analyst.data_analyst_agent.DataAnalystAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-pandas-data-analyst
+- id: DataAnalystManager
+  class_name: rustic_ai.pandas_data_analyst.data_analyst_manager.DataAnalystManager
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-pandas-data-analyst
+- id: FactCheckerAgent
+  class_name: rustic_ai.showcase.google.fact_checker.FactCheckerAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-showcase
+- id: ResearchManager
+  class_name: rustic_ai.showcase.laira.research_manager.ResearchManager
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-showcase
+- id: SimulationAgent
+  class_name: rustic_ai.simulation.agent.SimulationAgent
+  description: Auto-added from static agents snapshot
+  runtime: uvx
+  package: rusticai-simulation

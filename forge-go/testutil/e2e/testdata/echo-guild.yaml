@@ -1,0 +1,22 @@
+id: "e2e-guild-1"
+name: "E2E Smoke Guild"
+description: "Tests that GuildManagerAgent successfully bootstraps EchoAgent"
+agents:
+  - id: "echo-1"
+    name: "EchoAgent"
+    description: "Echo agent for E2E testing"
+    class_name: "rustic_ai.core.agents.testutils.echo_agent.EchoAgent"
+    properties: {}
+    additional_topics:
+      - "echo_topic"
+    listen_to_default_topic: false
+routes:
+  steps:
+    - agent:
+        id: "echo-1"
+        name: "EchoAgent"
+      destination:
+        topics:
+          - "go_probe_outbox"
+      process_status: "completed"
+      reason: "simply doing my job"

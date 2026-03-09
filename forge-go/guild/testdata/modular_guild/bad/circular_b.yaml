@@ -1,0 +1,4 @@
+id: circ_b
+name: B
+agents:
+  - !include circular_a.yaml

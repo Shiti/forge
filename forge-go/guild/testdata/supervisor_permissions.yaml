@@ -1,0 +1,12 @@
+id: "sp-01"
+name: "Supervisor Guild"
+description: "Guild with supervisor properties"
+agents:
+  - id: "sp-a1"
+    name: "Supervisor Agent"
+    description: "Using Bwrap"
+    class_name: "rustic_ai.agents.BwrapAgent"
+    properties:
+      supervisor: "bubblewrap"
+      permissions:
+        network: ["api.openai.com:443"]

@@ -1,0 +1,14 @@
+id: "cm-01"
+name: "CM Guild"
+description: "CM Description"
+properties:
+  messaging:
+    backend_module: "custom_messaging"
+    backend_class: "CustomBackend"
+    backend_config:
+      cluster: true
+agents:
+  - id: "cm-a1"
+    name: "CM Agent"
+    description: "CM Agent Desc"
+    class_name: "rustic_ai.agents.CMAgent"
