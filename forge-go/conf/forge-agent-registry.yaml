@@ -31,6 +31,8 @@ entries:
   description: Vertex AI content moderation
   runtime: uvx
   package: rusticai-vertexai
+  with_dependencies:
+  - pandas
   secrets:
   - VERTEXAI_PROJECT
   - VERTEXAI_LOCATION
@@ -48,6 +50,8 @@ entries:
     o3, etc.)
   runtime: uvx
   package: rusticai-llm-agent
+  with_dependencies:
+  - rusticai-litellm
   secrets:
   - OPENAI_API_KEY
   - ANTHROPIC_API_KEY
@@ -57,6 +61,8 @@ entries:
   description: ReAct loop reasoning agent
   runtime: uvx
   package: rusticai-llm-agent
+  with_dependencies:
+  - rusticai-litellm
   secrets:
   - OPENAI_API_KEY
   - ANTHROPIC_API_KEY
@@ -114,6 +120,9 @@ entries:
   description: Auto-added from static agents snapshot
   runtime: uvx
   package: rusticai-core
+  with_dependencies:
+  - rusticai-chroma
+  - rusticai-langchain
 - id: SimpleLLMAgent
   class_name: rustic_ai.core.agents.llm.simple_llm_agent.SimpleLLMAgent
   description: Auto-added from static agents snapshot
