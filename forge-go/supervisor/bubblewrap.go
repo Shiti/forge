@@ -362,6 +362,10 @@ func (p *BubblewrapSupervisor) GetPID(ctx context.Context, guildID, agentID stri
 }
 
 func (p *BubblewrapSupervisor) StopAll(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
+
 	p.mu.RLock()
 	agents := make([]*ManagedAgent, 0, len(p.agents))
 	for _, agent := range p.agents {
