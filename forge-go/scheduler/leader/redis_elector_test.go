@@ -2,6 +2,7 @@ package leader
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestRedisElector_AcquireAndHeartbeat(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	errCh := make(chan error)
+	errCh := make(chan error, 1)
 	go func() {
 		errCh <- elector.Acquire(ctx)
 	}()
@@ -41,6 +42,15 @@ func TestRedisElector_AcquireAndHeartbeat(t *testing.T) {
 
 	if !elector.IsLeader() {
 		t.Errorf("IsLeader should be true")
+	}
+
+	select {
+	case acquireErr := <-errCh:
+		if acquireErr != nil {
+			t.Fatalf("expected acquire to succeed, got %v", acquireErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for acquire to return")
 	}
 
 	// Verify key is in Redis
@@ -89,8 +99,14 @@ func TestRedisElector_Failover(t *testing.T) {
 	elector2 := NewRedisElector(client, "node-2", "forge:leader", 2*time.Second)
 
 	// Start both
-	go elector1.Acquire(ctx1)
-	go elector2.Acquire(ctx2)
+	errCh1 := make(chan error, 1)
+	errCh2 := make(chan error, 1)
+	go func() {
+		errCh1 <- elector1.Acquire(ctx1)
+	}()
+	go func() {
+		errCh2 <- elector2.Acquire(ctx2)
+	}()
 
 	// One should become leader
 	var leader string
@@ -139,4 +155,19 @@ func TestRedisElector_Failover(t *testing.T) {
 			t.Fatalf("timeout waiting for node-1 to take over leadership")
 		}
 	}
+
+	waitAcquire := func(nodeID string, ch <-chan error) {
+		t.Helper()
+		select {
+		case acquireErr := <-ch:
+			if acquireErr != nil && !errors.Is(acquireErr, context.Canceled) {
+				t.Fatalf("%s acquire failed: %v", nodeID, acquireErr)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("timeout waiting for %s acquire to return", nodeID)
+		}
+	}
+
+	waitAcquire("node-1", errCh1)
+	waitAcquire("node-2", errCh2)
 }

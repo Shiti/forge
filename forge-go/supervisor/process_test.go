@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rustic-ai/forge/forge-go/protocol"
+	"github.com/stretchr/testify/require"
 )
 
 func getSleepCmd() []string {
@@ -86,7 +87,7 @@ func TestProcessSupervisorCrashRestart(t *testing.T) {
 		t.Errorf("Expected status to be restarting, got %s", status)
 	}
 
-	sup.Stop(ctx, guildID, "agent-crash")
+	require.NoError(t, sup.Stop(ctx, guildID, "agent-crash"))
 	time.Sleep(200 * time.Millisecond)
 
 	status, _ = sup.Status(ctx, guildID, "agent-crash")

@@ -21,7 +21,9 @@ func TestServerE2E_Redis_Disconnection(t *testing.T) {
 	defer cancel()
 
 	dataDir := filepath.Join(os.TempDir(), "forge_test_node_redis_disco")
-	os.MkdirAll(dataDir, 0755)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir %s: %v", dataDir, err)
+	}
 
 	cfg := &ServerConfig{
 		DatabaseURL:        "file:testnodedisco?mode=memory&cache=shared",

@@ -172,7 +172,7 @@ func TestUserCommsEgressOnlyUserNotifications(t *testing.T) {
 
 	// Send an initial payload so readPump has an inbound message to process.
 	rawMsg := map[string]interface{}{"format": "x.y.Msg", "data": map[string]interface{}{"hello": "world"}}
-	conn.WriteJSON(rawMsg)
+	require.NoError(t, conn.WriteJSON(rawMsg))
 	time.Sleep(100 * time.Millisecond) // Let the readPump generate and store it
 
 	// 2. Publish an explicit direct notification to the user
@@ -218,7 +218,7 @@ func TestUserCommsEgressOnlyUserNotifications(t *testing.T) {
 	require.NoError(t, err)
 
 	// 5. Ensure no broadcast is delivered on the live user websocket.
-	conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(300*time.Millisecond)))
 	var shouldNotArrive protocol.Message
 	err = conn.ReadJSON(&shouldNotArrive)
 	require.Error(t, err)

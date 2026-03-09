@@ -78,13 +78,13 @@ func (s *Server) HandleManagerEnsureGuild(w http.ResponseWriter, r *http.Request
 	}
 
 	guildID := req.GuildSpec.ID
-	model, err := s.store.GetGuild(guildID)
+	_, err := s.store.GetGuild(guildID)
 	if err == nil {
 		if err := s.store.UpdateGuildStatus(guildID, store.GuildStatusStarting); err != nil {
 			ReplyError(w, http.StatusInternalServerError, "failed to update guild status")
 			return
 		}
-		model, err = s.store.GetGuild(guildID)
+		model, err := s.store.GetGuild(guildID)
 		if err != nil {
 			ReplyError(w, http.StatusInternalServerError, "failed to fetch guild")
 			return

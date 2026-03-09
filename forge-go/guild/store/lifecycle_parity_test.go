@@ -18,7 +18,11 @@ func TestStore_GuildSpecLifecycle_DBParity(t *testing.T) {
 	if err := db.CreateGuild(model); err != nil {
 		t.Fatalf("create guild: %v", err)
 	}
-	defer db.PurgeGuild(model)
+	defer func() {
+		if err := db.PurgeGuild(model); err != nil {
+			t.Fatalf("purge guild: %v", err)
+		}
+	}()
 
 	gotModel, err := db.GetGuild(spec.ID)
 	if err != nil {
@@ -83,7 +87,11 @@ func TestStore_GuildSpecLifecycle_EmptyCollectionsStayNonNil(t *testing.T) {
 	if err := db.CreateGuild(model); err != nil {
 		t.Fatalf("create guild: %v", err)
 	}
-	defer db.PurgeGuild(model)
+	defer func() {
+		if err := db.PurgeGuild(model); err != nil {
+			t.Fatalf("purge guild: %v", err)
+		}
+	}()
 
 	gotModel, err := db.GetGuild(spec.ID)
 	if err != nil {

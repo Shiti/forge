@@ -121,7 +121,11 @@ func TestLevel2_FileDependencyIntegration(t *testing.T) {
 
 	// 6. Launch via Local Process Supervisor
 	sup := supervisor.NewProcessSupervisor(rdb)
-	defer sup.StopAll(context.Background())
+	defer func() {
+		if err := sup.StopAll(context.Background()); err != nil {
+			t.Logf("failed to stop all agents: %v", err)
+		}
+	}()
 	agentCtx, cancelAgent := context.WithCancel(ctx)
 	defer cancelAgent()
 

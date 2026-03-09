@@ -152,7 +152,12 @@ func TestSysCommsIngressMutation(t *testing.T) {
 	sysInbox := "g1:user_system:u1"
 
 	// Get latest message JSON
-	zrange, err := rdb.ZRevRange(ctx, sysInbox, 0, 0).Result()
+	zrange, err := rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:   sysInbox,
+		Start: 0,
+		Stop:  0,
+		Rev:   true,
+	}).Result()
 	require.NoError(t, err)
 	require.NotEmpty(t, zrange, "Message was not inserted into ZSET")
 
@@ -184,7 +189,7 @@ func TestSysCommsEgressPassthrough(t *testing.T) {
 	conn, _ := connectSysWS(t, ts, "g1", "u1")
 	defer conn.Close()
 
-	conn.SetReadDeadline(time.Time{})
+	require.NoError(t, conn.SetReadDeadline(time.Time{}))
 	ctx := context.Background()
 
 	// Give the Gateway's Redis 'Subscribe' loop a moment to attach before we start firing notifications
@@ -192,7 +197,7 @@ func TestSysCommsEgressPassthrough(t *testing.T) {
 
 	// The syscomms connection always emits an initial HealthCheckRequest on guild_status_topic.
 	// Drain it so passthrough assertions below are deterministic.
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
 	_, initialPayload, err := conn.ReadMessage()
 	require.NoError(t, err)
 	var initialMsg protocol.Message
@@ -212,7 +217,7 @@ func TestSysCommsEgressPassthrough(t *testing.T) {
 	require.NoError(t, err)
 
 	var p []byte
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
 	_, p, err = conn.ReadMessage()
 	require.NoError(t, err)
 
@@ -233,7 +238,7 @@ func TestSysCommsEgressPassthrough(t *testing.T) {
 	err = msgClient.PublishMessage(ctx, "g1", "guild_status_topic", broadcastMsg)
 	require.NoError(t, err)
 
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
 	_, p2, err := conn.ReadMessage()
 	require.NoError(t, err)
 

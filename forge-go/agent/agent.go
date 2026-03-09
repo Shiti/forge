@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/redis/go-redis/v9"
 
@@ -51,6 +52,8 @@ func (a *Agent) Stop() {
 		a.ControlQueueHandler.Stop()
 	}
 	if a.Supervisor != nil {
-		a.Supervisor.StopAll(context.Background())
+		if err := a.Supervisor.StopAll(context.Background()); err != nil {
+			slog.Warn("failed to stop all supervised agents", "error", err)
+		}
 	}
 }

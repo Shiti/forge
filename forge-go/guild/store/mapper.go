@@ -42,7 +42,7 @@ func structToJSONB(v interface{}) JSONB {
 
 // jsonbToStruct converts a JSONB map to a struct via JSON marshaling.
 func jsonbToStruct[T any](j JSONB) *T {
-	if j == nil || len(j) == 0 {
+	if len(j) == 0 {
 		return nil
 	}
 	b, err := json.Marshal(j)

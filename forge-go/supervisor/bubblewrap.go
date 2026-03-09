@@ -100,17 +100,17 @@ func (p *BubblewrapSupervisor) buildBwrapArgs(entry *registry.AgentRegistryEntry
 
 	homeDir, _ := os.UserHomeDir()
 	if homeDir != "" {
-		uvToolDir := homeDir + "/.local/share/uv"
-		os.MkdirAll(uvToolDir, 0755)
-		args = append(args, "--bind", uvToolDir, uvToolDir)
+		bindPath := func(path string) {
+			if err := os.MkdirAll(path, 0755); err != nil {
+				slog.Warn("failed to create host path for bubblewrap bind", "path", path, "err", err)
+				return
+			}
+			args = append(args, "--bind", path, path)
+		}
 
-		uvCacheDir := homeDir + "/.cache/uv"
-		os.MkdirAll(uvCacheDir, 0755)
-		args = append(args, "--bind", uvCacheDir, uvCacheDir)
-
-		forgeDir := homeDir + "/.forge"
-		os.MkdirAll(forgeDir, 0755)
-		args = append(args, "--bind", forgeDir, forgeDir)
+		bindPath(homeDir + "/.local/share/uv")
+		bindPath(homeDir + "/.cache/uv")
+		bindPath(homeDir + "/.forge")
 	}
 
 	args = append(args, "--")
@@ -266,7 +266,14 @@ func (p *BubblewrapSupervisor) monitorProcess(guildID string, agent *ManagedAgen
 	select {
 	case <-time.After(delay):
 		if !agent.IsStopRequested() {
-			p.startProcess(ctx, guildID, agent, agentSpec, bwrapArgs, env)
+			if err := p.startProcess(ctx, guildID, agent, agentSpec, bwrapArgs, env); err != nil {
+				slog.Error("failed to restart bwrap-managed agent", "guild_id", guildID, "agent_id", agent.ID, "error", err)
+				agent.SetState(StateFailed)
+				agent.LastError = err
+				if p.rdb != nil {
+					_ = SetFailedStatus(ctx, p.rdb, guildID, agent.ID)
+				}
+			}
 		}
 	case <-agent.stopCh:
 		agent.SetState(StateStopped)
@@ -292,9 +299,13 @@ func (p *BubblewrapSupervisor) Stop(ctx context.Context, guildID, agentID string
 	if pid > 0 {
 		pgid, err := syscall.Getpgid(pid)
 		if err == nil {
-			syscall.Kill(-pgid, syscall.SIGTERM)
+			if killErr := syscall.Kill(-pgid, syscall.SIGTERM); killErr != nil && killErr != syscall.ESRCH {
+				slog.Warn("failed to SIGTERM process group", "pid", pid, "pgid", pgid, "error", killErr)
+			}
 		} else {
-			syscall.Kill(pid, syscall.SIGTERM)
+			if killErr := syscall.Kill(pid, syscall.SIGTERM); killErr != nil && killErr != syscall.ESRCH {
+				slog.Warn("failed to SIGTERM process", "pid", pid, "error", killErr)
+			}
 		}
 
 		for i := 0; i < 50; i++ {
@@ -306,9 +317,13 @@ func (p *BubblewrapSupervisor) Stop(ctx context.Context, guildID, agentID string
 
 		if syscall.Kill(pid, 0) == nil {
 			if pgid > 0 {
-				syscall.Kill(-pgid, syscall.SIGKILL)
+				if killErr := syscall.Kill(-pgid, syscall.SIGKILL); killErr != nil && killErr != syscall.ESRCH {
+					slog.Warn("failed to SIGKILL process group", "pid", pid, "pgid", pgid, "error", killErr)
+				}
 			} else {
-				syscall.Kill(pid, syscall.SIGKILL)
+				if killErr := syscall.Kill(pid, syscall.SIGKILL); killErr != nil && killErr != syscall.ESRCH {
+					slog.Warn("failed to SIGKILL process", "pid", pid, "error", killErr)
+				}
 			}
 		}
 	}
@@ -354,11 +369,17 @@ func (p *BubblewrapSupervisor) StopAll(ctx context.Context) error {
 	}
 	p.mu.RUnlock()
 
+	var firstErr error
 	for _, agent := range agents {
-		p.Stop(ctx, agent.GuildID, agent.ID)
+		if err := p.Stop(ctx, agent.GuildID, agent.ID); err != nil {
+			slog.Warn("failed to stop agent", "guild_id", agent.GuildID, "agent_id", agent.ID, "error", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 
-	return nil
+	return firstErr
 }
 
 func containsString(ss []string, target string) bool {

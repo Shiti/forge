@@ -57,7 +57,9 @@ func TestChainSecretProvider(t *testing.T) {
 
 	// Create file secret
 	secretPath := filepath.Join(tmpDir, "SHARED_KEY")
-	os.WriteFile(secretPath, []byte("file_wins"), 0600)
+	if err := os.WriteFile(secretPath, []byte("file_wins"), 0600); err != nil {
+		t.Fatalf("Failed to write SHARED_KEY secret file: %v", err)
+	}
 
 	envP := NewEnvSecretProvider()
 	fileP := NewFileSecretProvider(tmpDir)

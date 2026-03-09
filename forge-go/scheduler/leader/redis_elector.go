@@ -34,7 +34,7 @@ func NewRedisElector(client *redis.Client, nodeID string, key string, ttl time.D
 
 func (r *RedisElector) Acquire(ctx context.Context) error {
 	// Immediate first attempt
-	ok, err := r.client.SetNX(ctx, r.key, r.nodeID, r.ttl).Result()
+	ok, err := r.tryAcquire(ctx)
 	if err == nil && ok {
 		r.startHeartbeat()
 		r.setLeader(true)
@@ -49,7 +49,7 @@ func (r *RedisElector) Acquire(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			ok, err := r.client.SetNX(ctx, r.key, r.nodeID, r.ttl).Result()
+			ok, err := r.tryAcquire(ctx)
 			if err != nil {
 				slog.Error("RedisElector: fail to try lock", "err", err)
 				continue
@@ -63,6 +63,20 @@ func (r *RedisElector) Acquire(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (r *RedisElector) tryAcquire(ctx context.Context) (bool, error) {
+	res, err := r.client.SetArgs(ctx, r.key, r.nodeID, redis.SetArgs{
+		Mode: "NX",
+		TTL:  r.ttl,
+	}).Result()
+	if err == redis.Nil {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return res == "OK", nil
 }
 
 func (r *RedisElector) startHeartbeat() {

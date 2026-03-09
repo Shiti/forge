@@ -40,8 +40,9 @@ func TestHandleFileUploadAndDownload(t *testing.T) {
 	w := multipart.NewWriter(&b)
 	fw, err := w.CreateFormFile("file", "hello.txt")
 	require.NoError(t, err)
-	fw.Write([]byte("Hello, FileSystem!"))
-	w.Close()
+	_, err = fw.Write([]byte("Hello, FileSystem!"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/guilds/test-guild-abc/files/", &b)
 	req.Header.Set("Content-Type", w.FormDataContentType())
@@ -84,6 +85,6 @@ func TestHandleFileUploadAndDownload(t *testing.T) {
 	rrList2 := httptest.NewRecorder()
 	mux.ServeHTTP(rrList2, reqList2)
 	var filesAfter []MediaLink
-	json.Unmarshal(rrList2.Body.Bytes(), &filesAfter)
+	require.NoError(t, json.Unmarshal(rrList2.Body.Bytes(), &filesAfter))
 	assert.Len(t, filesAfter, 0)
 }

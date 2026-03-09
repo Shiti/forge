@@ -31,15 +31,13 @@ func TestHandler_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	// 2. Setup Dependencies
-	regYaml := `
-entries:
-  - id: TestAgent
-    class_name: "test.Agent"
-    runtime: binary
-    executable: "/bin/echo"
-`
+	regYaml := "entries:\n" +
+		"  - id: TestAgent\n" +
+		"    class_name: \"test.Agent\"\n" +
+		"    runtime: binary\n" +
+		"    executable: \"/bin/echo\"\n"
 	tmpfile := filepath.Join(t.TempDir(), "reg.yaml")
-	os.WriteFile(tmpfile, []byte(regYaml), 0644)
+	require.NoError(t, os.WriteFile(tmpfile, []byte(regYaml), 0644))
 	reg, err := registry.Load(tmpfile)
 	require.NoError(t, err)
 
@@ -142,15 +140,13 @@ func TestHandler_SpawnWithoutGuildStore_UsesFallback(t *testing.T) {
 	defer rdb.Close()
 	ctx := context.Background()
 
-	regYaml := `
-entries:
-  - id: TestAgent
-    class_name: "test.Agent"
-    runtime: binary
-    executable: "/bin/echo"
-`
+	regYaml := "entries:\n" +
+		"  - id: TestAgent\n" +
+		"    class_name: \"test.Agent\"\n" +
+		"    runtime: binary\n" +
+		"    executable: \"/bin/echo\"\n"
 	tmpfile := filepath.Join(t.TempDir(), "reg.yaml")
-	os.WriteFile(tmpfile, []byte(regYaml), 0644)
+	require.NoError(t, os.WriteFile(tmpfile, []byte(regYaml), 0644))
 	reg, err := registry.Load(tmpfile)
 	require.NoError(t, err)
 

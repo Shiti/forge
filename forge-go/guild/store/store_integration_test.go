@@ -48,7 +48,11 @@ func TestStore_AllE2ERoundtrip(t *testing.T) {
 
 			// Defer cleanup of the created guild to avoid ID collisions between tests
 			// Use PurgeGuild to hard delete, otherwise GORM Soft deletes keep the ID occupied
-			defer db.PurgeGuild(model)
+			defer func() {
+				if err := db.PurgeGuild(model); err != nil {
+					t.Fatalf("failed to purge guild: %v", err)
+				}
+			}()
 
 			// 5. Fetch from SQLite
 			fetchedModel, err := db.GetGuild(spec.ID)
@@ -97,7 +101,9 @@ func TestStore_AllE2ERoundtrip(t *testing.T) {
 			}
 
 			// Try delete now actually so DB is clean context for next iteration. GetGuild might have side-effects
-			db.PurgeGuild(model)
+			if err := db.PurgeGuild(model); err != nil {
+				t.Fatalf("failed to purge guild: %v", err)
+			}
 		})
 	}
 }

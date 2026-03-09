@@ -7,12 +7,6 @@ import (
 	"time"
 )
 
-func getFreeLocalhostPort() string {
-	// Let the OS assign a random port for testing
-	// In reality we just assign sequential ports for the test to avoid collisions
-	return "0"
-}
-
 func setupTestNodes(t *testing.T, count int, startPort int) []*RaftElector {
 	var electors []*RaftElector
 	var baseGossip = startPort

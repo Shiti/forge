@@ -71,7 +71,7 @@ agents:
 			if supMode == "docker" || supMode == "bwrap" {
 				// Use a stable /tmp path so Docker containers can access the SQLite DB
 				dbDir := filepath.Join("/tmp", "forge_e2e_"+supMode)
-				os.MkdirAll(dbDir, 0755)
+				require.NoError(t, os.MkdirAll(dbDir, 0755))
 				dbPath = filepath.Join(dbDir, "forge.db")
 				defer os.RemoveAll(dbDir)
 			} else {

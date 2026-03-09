@@ -75,15 +75,20 @@ func TestSequenceMaxInMillisecond(t *testing.T) {
 	require.NoError(t, err)
 
 	// Since Go is fast, we can test generating 4096 IDs quickly
-	id1, _ := generator.Generate(PriorityNormal)
+	id1, err := generator.Generate(PriorityNormal)
+	require.NoError(t, err)
 	for i := 0; i < 4095; i++ {
-		generator.Generate(PriorityNormal)
+		_, err = generator.Generate(PriorityNormal)
+		require.NoError(t, err)
 	}
-	id2, _ := generator.Generate(PriorityNormal)
+	id2, err := generator.Generate(PriorityNormal)
+	require.NoError(t, err)
 	for i := 0; i < 4095; i++ {
-		generator.Generate(PriorityNormal)
+		_, err = generator.Generate(PriorityNormal)
+		require.NoError(t, err)
 	}
-	id3, _ := generator.Generate(PriorityNormal)
+	id3, err := generator.Generate(PriorityNormal)
+	require.NoError(t, err)
 
 	assert.True(t, id2.Timestamp > id1.Timestamp)
 	assert.True(t, id3.Timestamp > id2.Timestamp)
@@ -101,9 +106,12 @@ func TestInvalidPriority(t *testing.T) {
 }
 
 func TestIDOrderingByPriority(t *testing.T) {
-	generator, _ := NewGemstoneGenerator(1)
-	id1, _ := generator.Generate(PriorityLow)
-	id2, _ := generator.Generate(PriorityHigh)
+	generator, err := NewGemstoneGenerator(1)
+	require.NoError(t, err)
+	id1, err := generator.Generate(PriorityLow)
+	require.NoError(t, err)
+	id2, err := generator.Generate(PriorityHigh)
+	require.NoError(t, err)
 	// Lower enum value numerical means HIGHER priority (e.g. High = 2, Low = 5).
 	// Therefore id2 (High/2) is less than id1 (Low/5) numerically when encoded or compared natively.
 	// Wait, Python's: (self.priority, ...), where priority is the numeric int.
@@ -115,7 +123,8 @@ func TestIDOrderingByPriority(t *testing.T) {
 
 func TestContractGeneration(t *testing.T) {
 	// A simple test generating many IDs to ensure it doesn't crash or panic.
-	generator, _ := NewGemstoneGenerator(42)
+	generator, err := NewGemstoneGenerator(42)
+	require.NoError(t, err)
 	for i := 0; i < 1000; i++ {
 		id, err := generator.Generate(PriorityNormal)
 		require.NoError(t, err)

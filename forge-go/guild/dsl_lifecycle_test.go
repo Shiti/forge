@@ -42,7 +42,11 @@ func TestDSL_Lifecycle_ParseBuildValidateStoreRoundTrip(t *testing.T) {
 			if err := db.CreateGuild(model); err != nil {
 				t.Fatalf("persist built spec: %v", err)
 			}
-			defer db.PurgeGuild(model)
+			defer func() {
+				if err := db.PurgeGuild(model); err != nil {
+					t.Fatalf("purge guild: %v", err)
+				}
+			}()
 
 			fetched, err := db.GetGuild(built.ID)
 			if err != nil {

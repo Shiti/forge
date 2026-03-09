@@ -23,7 +23,9 @@ func TestServerE2E_Raft_IsolationAndRejoin(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		dataDir := filepath.Join(os.TempDir(), fmt.Sprintf("forge_raft_node_%d_%d", base, idx))
-		os.MkdirAll(dataDir, 0755)
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			t.Fatalf("failed to create data dir %s: %v", dataDir, err)
+		}
 
 		cfg := &ServerConfig{
 			DatabaseURL:        fmt.Sprintf("file:raftnode%d_%d?mode=memory&cache=shared", base, idx),

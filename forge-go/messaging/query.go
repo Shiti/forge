@@ -82,9 +82,11 @@ func (c *Client) GetMessagesSince(ctx context.Context, namespace, topic string, 
 	// Add 1 to bound exclusively above the provided timestamp
 	minScore := fmt.Sprintf("%f", float64(gemstone.Timestamp+1))
 
-	rawMessages, err := c.rdb.ZRangeByScore(ctx, nsTopic, &redis.ZRangeBy{
-		Min: minScore,
-		Max: "+inf",
+	rawMessages, err := c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     nsTopic,
+		Start:   minScore,
+		Stop:    "+inf",
+		ByScore: true,
 	}).Result()
 
 	if err != nil {

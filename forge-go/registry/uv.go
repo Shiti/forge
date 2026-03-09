@@ -130,11 +130,22 @@ func downloadAndExtract(url, targetDirName, destBin string, isZip bool) error {
 					return fmt.Errorf("failed to create binary file %s: %w", outPath, err)
 				}
 				rc, err := file.Open()
-				if err == nil {
-					io.Copy(outFile, rc)
-					rc.Close()
+				if err != nil {
+					_ = outFile.Close()
+					return fmt.Errorf("failed to open zip file %s: %w", file.Name, err)
 				}
-				outFile.Close()
+				if _, err := io.Copy(outFile, rc); err != nil {
+					_ = rc.Close()
+					_ = outFile.Close()
+					return fmt.Errorf("failed to write %s: %w", name, err)
+				}
+				if err := rc.Close(); err != nil {
+					_ = outFile.Close()
+					return fmt.Errorf("failed to close zip file stream %s: %w", file.Name, err)
+				}
+				if err := outFile.Close(); err != nil {
+					return fmt.Errorf("failed to close output file %s: %w", outPath, err)
+				}
 				found++
 			}
 		}
@@ -171,10 +182,12 @@ func downloadAndExtract(url, targetDirName, destBin string, isZip bool) error {
 					return fmt.Errorf("failed to create binary file %s: %w", outPath, err)
 				}
 				if _, err := io.Copy(outFile, tr); err != nil {
-					outFile.Close()
+					_ = outFile.Close()
 					return fmt.Errorf("failed to write %s: %w", name, err)
 				}
-				outFile.Close()
+				if err := outFile.Close(); err != nil {
+					return fmt.Errorf("failed to close output file %s: %w", outPath, err)
+				}
 				found++
 			}
 		}

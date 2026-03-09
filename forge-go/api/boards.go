@@ -8,6 +8,7 @@ import (
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 )
 
+//nolint:unused // kept for stdlib mux wiring parity with non-gin API surfaces.
 func (s *Server) registerBoardRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /addons/boards", WithTelemetry("boards.create", http.HandlerFunc(s.HandleCreateBoard)))
 	mux.Handle("GET /addons/boards", WithTelemetry("boards.list", http.HandlerFunc(s.HandleGetBoards)))

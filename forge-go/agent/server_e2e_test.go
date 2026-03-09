@@ -31,7 +31,9 @@ func TestServerE2E_RedisElection(t *testing.T) {
 
 		// Unique tmp dir for sqlite per node
 		dataDir := filepath.Join(os.TempDir(), fmt.Sprintf("forge_test_node_%d", idx))
-		os.MkdirAll(dataDir, 0755)
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			t.Fatalf("failed to create data dir %s: %v", dataDir, err)
+		}
 
 		cfg := &ServerConfig{
 			DatabaseURL:        fmt.Sprintf("file:testnode%d?mode=memory&cache=shared", idx),
@@ -111,7 +113,9 @@ func TestServerE2E_RaftElection(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		dataDir := filepath.Join(os.TempDir(), fmt.Sprintf("forge_raft_node_%d", idx))
-		os.MkdirAll(dataDir, 0755)
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			t.Fatalf("failed to create data dir %s: %v", dataDir, err)
+		}
 
 		cfg := &ServerConfig{
 			DatabaseURL:        fmt.Sprintf("file:raftnode%d?mode=memory&cache=shared", idx),

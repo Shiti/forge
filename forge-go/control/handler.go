@@ -140,6 +140,12 @@ func (h *ControlQueueHandler) Stop() {
 	}
 }
 
+func (h *ControlQueueHandler) sendError(ctx context.Context, requestID, detail string) {
+	if err := h.responder.SendError(ctx, requestID, detail); err != nil {
+		slog.Error("failed to send control error response", "request_id", requestID, "detail", detail, "error", err)
+	}
+}
+
 // handleSpawn orchestrates booting an agent based on the remote SpawnRequest
 func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.SpawnRequest) {
 	slog.Info("handleSpawn: received spawn request", "agent_id", req.AgentSpec.ID, "class", req.AgentSpec.ClassName, "guild", req.GuildID, "request_id", req.RequestID)
@@ -147,7 +153,7 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 	entry, err := h.registry.Lookup(req.AgentSpec.ClassName)
 	if err != nil {
 		slog.Error("handleSpawn: registry lookup failed", "class", req.AgentSpec.ClassName, "error", err)
-		h.responder.SendError(ctx, req.RequestID, fmt.Sprintf("failed to lookup agent class %s from registry: %v", req.AgentSpec.ClassName, err))
+		h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to lookup agent class %s from registry: %v", req.AgentSpec.ClassName, err))
 		return
 	}
 	slog.Info("handleSpawn: registry lookup OK", "agent_id", req.AgentSpec.ID, "entry_id", entry.ID)
@@ -197,7 +203,7 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 	envVars, err := envvars.BuildAgentEnv(ctx, guildSpec, &req.AgentSpec, entry, h.secrets)
 	if err != nil {
 		slog.Error("handleSpawn: env var build failed", "agent_id", req.AgentSpec.ID, "error", err)
-		h.responder.SendError(ctx, req.RequestID, fmt.Sprintf("failed to build environment variables: %v", err))
+		h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to build environment variables: %v", err))
 		return
 	}
 	slog.Info("handleSpawn: env vars built OK", "agent_id", req.AgentSpec.ID, "env_count", len(envVars))
@@ -205,14 +211,14 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 	orgID := h.resolveOrganizationForSpawn(req, guildOrgID)
 	sup := h.supervisorForOrganization(orgID)
 	if sup == nil {
-		h.responder.SendError(ctx, req.RequestID, "no supervisor available for organization")
+		h.sendError(ctx, req.RequestID, "no supervisor available for organization")
 		return
 	}
 
 	err = sup.Launch(ctx, req.GuildID, &req.AgentSpec, h.registry, envVars)
 	if err != nil {
 		slog.Error("handleSpawn: supervisor launch failed", "agent_id", req.AgentSpec.ID, "org", orgID, "error", err)
-		h.responder.SendError(ctx, req.RequestID, fmt.Sprintf("failed to launch process via supervisor: %v", err))
+		h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to launch process via supervisor: %v", err))
 		return
 	}
 	h.recordAgentOrganization(req.GuildID, req.AgentSpec.ID, orgID)
@@ -242,7 +248,7 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 			}
 
 			if msg.PID <= 0 {
-				h.responder.SendError(ctx, req.RequestID, "timed out waiting to retrieve valid PID for spawned agent")
+				h.sendError(ctx, req.RequestID, "timed out waiting to retrieve valid PID for spawned agent")
 				return
 			}
 		}
@@ -255,13 +261,13 @@ func (h *ControlQueueHandler) handleStop(ctx context.Context, req *protocol.Stop
 	orgID := h.resolveOrganizationForStop(req)
 	sup := h.supervisorForOrganization(orgID)
 	if sup == nil {
-		h.responder.SendError(ctx, req.RequestID, "no supervisor available for organization")
+		h.sendError(ctx, req.RequestID, "no supervisor available for organization")
 		return
 	}
 
 	err := sup.Stop(ctx, req.GuildID, req.AgentID)
 	if err != nil {
-		h.responder.SendError(ctx, req.RequestID, fmt.Sprintf("failed to stop agent %s: %v", req.AgentID, err))
+		h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to stop agent %s: %v", req.AgentID, err))
 		return
 	}
 	h.forgetAgentOrganization(req.GuildID, req.AgentID)

@@ -205,7 +205,14 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 	select {
 	case <-time.After(delay):
 		if !agent.IsStopRequested() {
-			p.startProcess(ctx, guildID, agent, agentSpec, runtimeCmd, env)
+			if err := p.startProcess(ctx, guildID, agent, agentSpec, runtimeCmd, env); err != nil {
+				slog.Error("failed to restart process-managed agent", "guild_id", guildID, "agent_id", agent.ID, "error", err)
+				agent.SetState(StateFailed)
+				agent.LastError = err
+				if p.rdb != nil {
+					_ = SetFailedStatus(ctx, p.rdb, guildID, agent.ID)
+				}
+			}
 		}
 	case <-agent.stopCh:
 		agent.SetState(StateStopped)
@@ -273,9 +280,15 @@ func (p *ProcessSupervisor) StopAll(ctx context.Context) error {
 	}
 	p.mu.RUnlock()
 
+	var firstErr error
 	for _, agent := range agents {
-		p.Stop(ctx, agent.GuildID, agent.ID)
+		if err := p.Stop(ctx, agent.GuildID, agent.ID); err != nil {
+			slog.Warn("failed to stop agent", "guild_id", agent.GuildID, "agent_id", agent.ID, "error", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 
-	return nil
+	return firstErr
 }

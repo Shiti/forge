@@ -271,6 +271,14 @@ func (e *RaftElector) Watch() <-chan bool {
 }
 
 func (e *RaftElector) Close() {
-	e.memberlist.Shutdown()
-	e.raftNode.Shutdown()
+	if e.memberlist != nil {
+		if err := e.memberlist.Shutdown(); err != nil {
+			slog.Warn("RaftElector: memberlist shutdown failed", "err", err)
+		}
+	}
+	if e.raftNode != nil {
+		if err := e.raftNode.Shutdown().Error(); err != nil {
+			slog.Warn("RaftElector: raft shutdown failed", "err", err)
+		}
+	}
 }

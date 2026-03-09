@@ -150,7 +150,11 @@ func TestLevel1_EchoAgentIntegration(t *testing.T) {
 				sup = bs
 			}
 
-			defer sup.StopAll(context.Background())
+			defer func() {
+				if err := sup.StopAll(context.Background()); err != nil {
+					t.Logf("failed to stop all agents: %v", err)
+				}
+			}()
 			agentCtx, cancelAgent := context.WithCancel(context.Background())
 			defer cancelAgent() // Ensure process is killed when test finishes
 

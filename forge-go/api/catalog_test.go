@@ -274,13 +274,25 @@ func TestGetGuildsForUserWithStatuses(t *testing.T) {
 	RegisterCatalogRoutes(mux, db)
 
 	// Create guilds with different statuses
-	db.CreateGuild(&store.GuildModel{ID: "g1", Name: "Running Guild", OrganizationID: "org_1", Status: store.GuildStatusRunning})
-	db.CreateGuild(&store.GuildModel{ID: "g2", Name: "Stopped Guild", OrganizationID: "org_1", Status: store.GuildStatusStopped})
-	db.CreateGuild(&store.GuildModel{ID: "g3", Name: "Error Guild", OrganizationID: "org_1", Status: store.GuildStatusError})
+	if err := db.CreateGuild(&store.GuildModel{ID: "g1", Name: "Running Guild", OrganizationID: "org_1", Status: store.GuildStatusRunning}); err != nil {
+		t.Fatalf("failed to create g1: %v", err)
+	}
+	if err := db.CreateGuild(&store.GuildModel{ID: "g2", Name: "Stopped Guild", OrganizationID: "org_1", Status: store.GuildStatusStopped}); err != nil {
+		t.Fatalf("failed to create g2: %v", err)
+	}
+	if err := db.CreateGuild(&store.GuildModel{ID: "g3", Name: "Error Guild", OrganizationID: "org_1", Status: store.GuildStatusError}); err != nil {
+		t.Fatalf("failed to create g3: %v", err)
+	}
 
-	db.AddUserToGuild("g1", "user_1")
-	db.AddUserToGuild("g2", "user_1")
-	db.AddUserToGuild("g3", "user_1")
+	if err := db.AddUserToGuild("g1", "user_1"); err != nil {
+		t.Fatalf("failed to add user_1 to g1: %v", err)
+	}
+	if err := db.AddUserToGuild("g2", "user_1"); err != nil {
+		t.Fatalf("failed to add user_1 to g2: %v", err)
+	}
+	if err := db.AddUserToGuild("g3", "user_1"); err != nil {
+		t.Fatalf("failed to add user_1 to g3: %v", err)
+	}
 
 	t.Run("no filter returns all", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/catalog/users/user_1/guilds", nil)
@@ -292,7 +304,9 @@ func TestGetGuildsForUserWithStatuses(t *testing.T) {
 		}
 
 		var results []map[string]interface{}
-		json.NewDecoder(rr.Body).Decode(&results)
+		if err := json.NewDecoder(rr.Body).Decode(&results); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
 		if len(results) != 3 {
 			t.Errorf("expected 3 guilds, got %d", len(results))
 		}
@@ -308,7 +322,9 @@ func TestGetGuildsForUserWithStatuses(t *testing.T) {
 		}
 
 		var results []map[string]interface{}
-		json.NewDecoder(rr.Body).Decode(&results)
+		if err := json.NewDecoder(rr.Body).Decode(&results); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
 		if len(results) != 1 {
 			t.Errorf("expected 1 guild, got %d", len(results))
 		}
@@ -327,7 +343,9 @@ func TestGetGuildsForUserWithStatuses(t *testing.T) {
 		}
 
 		var results []map[string]interface{}
-		json.NewDecoder(rr.Body).Decode(&results)
+		if err := json.NewDecoder(rr.Body).Decode(&results); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
 		if len(results) != 2 {
 			t.Errorf("expected 2 guilds, got %d", len(results))
 		}
@@ -353,8 +371,12 @@ func TestGetGuildsForOrgWithStatuses(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterCatalogRoutes(mux, db)
 
-	db.CreateGuild(&store.GuildModel{ID: "g1", Name: "Running", OrganizationID: "org_1", Status: store.GuildStatusRunning})
-	db.CreateGuild(&store.GuildModel{ID: "g2", Name: "Stopped", OrganizationID: "org_1", Status: store.GuildStatusStopped})
+	if err := db.CreateGuild(&store.GuildModel{ID: "g1", Name: "Running", OrganizationID: "org_1", Status: store.GuildStatusRunning}); err != nil {
+		t.Fatalf("failed to create g1: %v", err)
+	}
+	if err := db.CreateGuild(&store.GuildModel{ID: "g2", Name: "Stopped", OrganizationID: "org_1", Status: store.GuildStatusStopped}); err != nil {
+		t.Fatalf("failed to create g2: %v", err)
+	}
 
 	t.Run("no filter returns all", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/catalog/organizations/org_1/guilds", nil)
@@ -366,7 +388,9 @@ func TestGetGuildsForOrgWithStatuses(t *testing.T) {
 		}
 
 		var results []map[string]interface{}
-		json.NewDecoder(rr.Body).Decode(&results)
+		if err := json.NewDecoder(rr.Body).Decode(&results); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
 		if len(results) != 2 {
 			t.Errorf("expected 2 guilds, got %d", len(results))
 		}
@@ -382,7 +406,9 @@ func TestGetGuildsForOrgWithStatuses(t *testing.T) {
 		}
 
 		var results []map[string]interface{}
-		json.NewDecoder(rr.Body).Decode(&results)
+		if err := json.NewDecoder(rr.Body).Decode(&results); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
 		if len(results) != 1 {
 			t.Errorf("expected 1 guild, got %d", len(results))
 		}

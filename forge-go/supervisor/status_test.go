@@ -66,7 +66,7 @@ func TestStatusKeyLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	val, _ = rdb.Get(ctx, key).Result()
-	json.Unmarshal([]byte(val), &status)
+	require.NoError(t, json.Unmarshal([]byte(val), &status))
 	assert.Equal(t, "restarting", status.State)
 
 	// 5. Test Failed overlay status (300s TTL)
@@ -74,7 +74,7 @@ func TestStatusKeyLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	val, _ = rdb.Get(ctx, key).Result()
-	json.Unmarshal([]byte(val), &status)
+	require.NoError(t, json.Unmarshal([]byte(val), &status))
 	assert.Equal(t, "failed", status.State)
 
 	ttl, _ = rdb.TTL(ctx, key).Result()

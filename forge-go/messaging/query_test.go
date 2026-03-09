@@ -28,10 +28,13 @@ func TestPublishAndRetrieveMessages(t *testing.T) {
 	client := messaging.NewClient(rdb)
 	ctx := context.Background()
 
-	gen, _ := protocol.NewGemstoneGenerator(1)
+	gen, err := protocol.NewGemstoneGenerator(1)
+	require.NoError(t, err)
 
-	id1, _ := gen.Generate(protocol.PriorityNormal)
-	id2, _ := gen.Generate(protocol.PriorityUrgent) // Urgent has higher logical priority (-1 numerically compared to Normal)
+	id1, err := gen.Generate(protocol.PriorityNormal)
+	require.NoError(t, err)
+	id2, err := gen.Generate(protocol.PriorityUrgent) // Urgent has higher logical priority (-1 numerically compared to Normal)
+	require.NoError(t, err)
 
 	user1Name := "user_1"
 	systemName := "system"
@@ -93,21 +96,25 @@ func TestGetMessagesSince(t *testing.T) {
 	client := messaging.NewClient(rdb)
 	ctx := context.Background()
 
-	gen, _ := protocol.NewGemstoneGenerator(1)
+	gen, err := protocol.NewGemstoneGenerator(1)
+	require.NoError(t, err)
 
 	topic := "paginated_topic"
 
 	// Create 3 messages spanning some time
-	id1, _ := gen.Generate(protocol.PriorityNormal)
+	id1, err := gen.Generate(protocol.PriorityNormal)
+	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond) // artificially increment timestamp to ensure boundary separation
-	id2, _ := gen.Generate(protocol.PriorityNormal)
+	id2, err := gen.Generate(protocol.PriorityNormal)
+	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond)
-	id3, _ := gen.Generate(protocol.PriorityNormal)
+	id3, err := gen.Generate(protocol.PriorityNormal)
+	require.NoError(t, err)
 
 	for _, id := range []protocol.GemstoneID{id1, id2, id3} {
-		client.PublishMessage(ctx, "ns", topic, &protocol.Message{
+		require.NoError(t, client.PublishMessage(ctx, "ns", topic, &protocol.Message{
 			ID: id.ToInt(),
-		})
+		}))
 	}
 
 	// Fetch since id1

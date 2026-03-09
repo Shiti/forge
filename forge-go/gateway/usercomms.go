@@ -423,9 +423,6 @@ func normalizeUserEnvelope(
 ) map[string]interface{} {
 	format, _ := userMsg["format"].(string)
 	topics := normalizeTopics(coalesceMapValue(userMsg, "topics", "topic"))
-	if topics == nil {
-		topics = "default_topic"
-	}
 	payload := coalesceMapValue(userMsg, "payload", "data")
 	if payload == nil {
 		payload = map[string]interface{}{}

@@ -37,8 +37,8 @@ func setupTestServer(t *testing.T) (*Server, *miniredis.Miniredis, store.Store, 
 	fileStore := filesystem.NewLocalFileStore(resolver)
 
 	// Create a dummy config file for dependencies
-	os.MkdirAll("conf", 0755)
-	os.WriteFile("conf/agent-dependencies.yaml", []byte(fmt.Sprintf(`
+	require.NoError(t, os.MkdirAll("conf", 0755))
+	require.NoError(t, os.WriteFile("conf/agent-dependencies.yaml", []byte(fmt.Sprintf(`
 filesystem:
   class_name: rustic_ai.core.guild.agent_ext.depends.filesystem.filesystem.FileSystemResolver
   properties:
@@ -46,7 +46,7 @@ filesystem:
     protocol: file
     storage_options:
       auto_mkdir: true
-`, fsPath)), 0644)
+`, fsPath)), 0644))
 
 	// Setup messaging client
 	msgClient := messaging.NewClient(rdb)
@@ -216,7 +216,7 @@ func TestHandleRelaunchGuild_NoOpWhenManagerRunning(t *testing.T) {
 	require.NoError(t, dbStore.CreateGuild(guildModel))
 
 	statusKey := "forge:agent:status:" + guildID + ":" + guildID + "#manager_agent"
-	mr.Set(statusKey, `{"state":"running"}`)
+	require.NoError(t, mr.Set(statusKey, `{"state":"running"}`))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/guilds/"+guildID+"/relaunch", nil)
 	rr := httptest.NewRecorder()

@@ -83,7 +83,9 @@ func TestStore_AgentLifecycle(t *testing.T) {
 	defer db.Close()
 
 	guild := &store.GuildModel{ID: "guild-abc", OrganizationID: "org-1"}
-	db.CreateGuild(guild)
+	if err := db.CreateGuild(guild); err != nil {
+		t.Fatalf("failed to create guild: %v", err)
+	}
 
 	agent := &store.AgentModel{
 		ID:         "agent-xyz",
@@ -209,7 +211,9 @@ func TestStore_AgentDeleteLifecycle(t *testing.T) {
 	defer db.Close()
 
 	guild := &store.GuildModel{ID: "guild-xyz", OrganizationID: "org-1"}
-	db.CreateGuild(guild)
+	if err := db.CreateGuild(guild); err != nil {
+		t.Fatalf("failed to create guild: %v", err)
+	}
 
 	agent := &store.AgentModel{
 		ID:        "agent-del",

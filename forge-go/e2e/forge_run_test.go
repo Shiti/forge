@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,7 +88,9 @@ agents:
 	// Clean up child process in case of panic
 	defer func() {
 		if runCmd.Process != nil {
-			runCmd.Process.Signal(syscall.SIGKILL)
+			if err := runCmd.Process.Signal(syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Logf("failed to kill run process: %v", err)
+			}
 		}
 	}()
 
