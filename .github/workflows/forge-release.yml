@@ -268,7 +268,7 @@ jobs:
       - name: Attach python distributions to GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.prepare-release.outputs.tag }}" dist/* --clobber
+        run: gh release upload "${{ needs.prepare-release.outputs.tag }}" dist/* --clobber -R "${{ github.repository }}"
 
       - name: Publish python distributions to PyPI
         if: ${{ needs.prepare-release.outputs.publish_target == 'pypi' }}
