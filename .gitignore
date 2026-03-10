@@ -87,6 +87,7 @@ cover/
 *.rdb
 
 **/.gocache/
+**/.gomodcache/
 
 .claude/
 CLAUDE.md
