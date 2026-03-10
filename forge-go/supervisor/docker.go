@@ -87,7 +87,7 @@ func (d *DockerSupervisor) Available() bool {
 }
 
 func (d *DockerSupervisor) ensureImage(ctx context.Context, imageRef string) error {
-	_, _, err := d.cli.ImageInspectWithRaw(ctx, imageRef)
+	_, err := d.cli.ImageInspect(ctx, imageRef)
 	if err == nil {
 		return nil
 	}

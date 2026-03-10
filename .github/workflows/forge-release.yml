@@ -53,6 +53,7 @@ jobs:
           event_name="${GITHUB_EVENT_NAME}"
           actor="${GITHUB_ACTOR}"
           skip_release="false"
+          current_sha="$(git rev-parse HEAD)"
 
           if [[ "$event_name" == "workflow_dispatch" ]]; then
             raw_version="${{ inputs.version }}"
@@ -91,15 +92,31 @@ jobs:
           fi
 
           if [[ "$event_name" == "workflow_dispatch" ]]; then
-            if git rev-parse "$tag" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-              echo "Tag $tag already exists" >&2
-              exit 1
-            fi
+            if git rev-parse "$tag" >/dev/null 2>&1; then
+              tag_commit="$(git rev-list -n 1 "$tag")"
+              if [[ "$tag_commit" != "$current_sha" ]]; then
+                echo "Tag $tag already exists on $tag_commit, expected $current_sha" >&2
+                exit 1
+              fi
 
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$tag" -m "$(printf 'Release %s\n\npublish_target=%s\n' "$tag" "$publish_target")"
-            git push origin "refs/tags/$tag"
+              tag_contents="$(git for-each-ref --format='%(contents)' "refs/tags/${tag}")"
+              existing_publish_target="pypi"
+              if grep -q '^publish_target=testpypi$' <<<"$tag_contents"; then
+                existing_publish_target="testpypi"
+              fi
+              if [[ "$existing_publish_target" != "$publish_target" ]]; then
+                echo "Tag $tag already exists with publish_target=$existing_publish_target, not $publish_target" >&2
+                exit 1
+              fi
+            elif git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "Tag $tag exists on origin but was not fetched locally" >&2
+              exit 1
+            else
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git tag -a "$tag" -m "$(printf 'Release %s\n\npublish_target=%s\n' "$tag" "$publish_target")"
+              git push origin "refs/tags/$tag"
+            fi
           fi
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
