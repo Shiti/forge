@@ -152,7 +152,7 @@ jobs:
         run: uv build
 
       - name: Run Pytest
-        run: uv run --frozen pytest
+        run: uv run --frozen pytest --ignore=tests/contract
 
   contract-tests:
     runs-on: ubuntu-latest

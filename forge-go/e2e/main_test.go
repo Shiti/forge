@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/rustic-ai/forge/forge-go/registry"
 )
 
 var (
@@ -44,6 +46,13 @@ func TestMain(m *testing.M) {
 		_ = os.Setenv("TMPDIR", tmpDir)
 		_ = os.Setenv("FORGE_UV_CACHE_DIR", uvCache)
 		_ = os.Setenv("UV_CACHE_DIR", uvCache)
+
+		if _, lookErr := exec.LookPath("uvx"); lookErr != nil {
+			if ensureErr := registry.EnsureUV(); ensureErr != nil {
+				fmt.Fprintf(os.Stderr, "failed to ensure uv for e2e tests: %v\n", ensureErr)
+				os.Exit(1)
+			}
+		}
 
 		// Build once for the full e2e package to avoid repeated go-build temp churn.
 		e2eForgeBin = filepath.Join(binDir, "forge_e2e")

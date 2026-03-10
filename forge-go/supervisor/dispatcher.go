@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"sync"
 
 	"github.com/rustic-ai/forge/forge-go/helper/logging"
@@ -32,26 +33,40 @@ func NewDispatchingSupervisor(nodeDefault string, process AgentSupervisor, docke
 	}
 }
 
+func hasSupervisor(sup AgentSupervisor) bool {
+	if sup == nil {
+		return false
+	}
+
+	value := reflect.ValueOf(sup)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return !value.IsNil()
+	default:
+		return true
+	}
+}
+
 func (d *DispatchingSupervisor) selectSupervisor(entry *registry.AgentRegistryEntry) (AgentSupervisor, error) {
-	if d.nodeDefault == "docker" && d.dockerSup != nil {
+	if d.nodeDefault == "docker" && hasSupervisor(d.dockerSup) {
 		return d.dockerSup, nil
 	}
-	if d.nodeDefault == "bwrap" && d.bwrapSup != nil {
+	if d.nodeDefault == "bwrap" && hasSupervisor(d.bwrapSup) {
 		return d.bwrapSup, nil
 	}
-	if d.nodeDefault == "process" && d.processSup != nil {
+	if d.nodeDefault == "process" && hasSupervisor(d.processSup) {
 		return d.processSup, nil
 	}
 
 	requested := entry.Runtime
-	if requested == registry.RuntimeDocker && d.dockerSup != nil {
+	if requested == registry.RuntimeDocker && hasSupervisor(d.dockerSup) {
 		return d.dockerSup, nil
 	}
-	if requested == "bwrap" && d.bwrapSup != nil {
+	if requested == "bwrap" && hasSupervisor(d.bwrapSup) {
 		return d.bwrapSup, nil
 	}
 
-	if d.processSup != nil {
+	if hasSupervisor(d.processSup) {
 		return d.processSup, nil
 	}
 
@@ -120,7 +135,7 @@ func (d *DispatchingSupervisor) Status(ctx context.Context, guildID, agentID str
 func (d *DispatchingSupervisor) StopAll(ctx context.Context) error {
 	var errs []error
 	for _, sup := range []AgentSupervisor{d.processSup, d.dockerSup, d.bwrapSup} {
-		if sup != nil {
+		if hasSupervisor(sup) {
 			if err := sup.StopAll(ctx); err != nil {
 				errs = append(errs, err)
 			}
