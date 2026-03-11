@@ -22,13 +22,42 @@ func TestProxyMarshalOutgoingMessage_UsesDataEnvelope(t *testing.T) {
 
 	var out map[string]interface{}
 	require.NoError(t, json.Unmarshal(raw, &out))
-	require.Equal(t, "rustic_ai.core.guild.agent_ext.mixins.health.AgentsHealthReport", out["format"])
+	require.Equal(t, "healthReport", out["format"])
 	require.NotNil(t, out["data"])
 	require.Nil(t, out["payload"])
 
 	data, ok := out["data"].(map[string]interface{})
 	require.True(t, ok)
 	require.Equal(t, "ok", data["guild_health"])
+}
+
+func TestProxyMarshalOutgoingMessage_ParticipantListUsesLegacyArrayShape(t *testing.T) {
+	msg := protocol.NewMessage()
+	msg.ID = 12346
+	msg.Format = "rustic_ai.core.agents.utils.user_proxy_agent.ParticipantList"
+	msg.Topics = protocol.TopicsFromString("user_system_notification:dummyuserid")
+	msg.Priority = int(protocol.PriorityNormal)
+	msg.Payload = json.RawMessage(`{
+		"participants": [
+			{"id":"a1","name":"Echo Agent","type":"bot"},
+			{"id":"upa-dummyuserid","name":"dummyuserid","type":"human"}
+		]
+	}`)
+
+	raw, err := proxyMarshalOutgoingMessage(msg, "g1", "http://localhost:3001")
+	require.NoError(t, err)
+
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	require.Equal(t, "participants", out["format"])
+
+	data, ok := out["data"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, data, 2)
+
+	first, ok := data[0].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "a1", first["id"])
 }
 
 func TestProxyMarshalOutgoingMessage_ChatCompletionResponseToMarkdown(t *testing.T) {
@@ -122,7 +151,7 @@ func TestProxyMarshalOutgoingMessage_ChatCompletionRequest_DataMessagesParity(t 
 
 	var out map[string]interface{}
 	require.NoError(t, json.Unmarshal(raw, &out))
-	require.Equal(t, "chatCompletionRequest", out["format"])
+	require.Equal(t, "ChatCompletionRequest", out["format"])
 
 	data, ok := out["data"].(map[string]interface{})
 	require.True(t, ok)

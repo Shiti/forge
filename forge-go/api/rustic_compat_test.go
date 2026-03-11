@@ -39,7 +39,7 @@ func TestTransformRusticMessage_ChatCompletionResponse(t *testing.T) {
 	require.Equal(t, "NORMAL", out["priority"])
 }
 
-func TestTransformRusticMessage_ParticipantListFormatIsCanonical(t *testing.T) {
+func TestTransformRusticMessage_ParticipantListUsesLegacyUIShape(t *testing.T) {
 	msg := protocol.NewMessage()
 	msg.ID = 124
 	msg.Format = "rustic_ai.core.agents.utils.user_proxy_agent.ParticipantList"
@@ -50,8 +50,18 @@ func TestTransformRusticMessage_ParticipantListFormatIsCanonical(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://localhost/rustic/api/guilds/g1/dummyuserid/messages", nil)
 	out := transformRusticMessage(msg, "g1", req)
 
-	require.Equal(t, "rustic_ai.core.agents.utils.user_proxy_agent.ParticipantList", out["format"])
+	require.Equal(t, "participants", out["format"])
 	require.Equal(t, "IMPORTANT", out["priority"])
+
+	data, ok := out["data"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, data, 1)
+
+	first, ok := data[0].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "a-1", first["id"])
+	require.Equal(t, "Echo Agent", first["name"])
+	require.Equal(t, "bot", first["type"])
 }
 
 func TestRusticMessagesRoute_ShapesLegacyEnvelope(t *testing.T) {

@@ -324,7 +324,7 @@ func proxyApplyAdditionalTransforms(guildID, baseOrigin, format string, raw inte
 		// Proxy preserves original format string here.
 		transformedData = proxyTransformVegaLite(msgData, guildID, baseOrigin)
 	case "ChatCompletionRequest":
-		transformedFormat = "chatCompletionRequest"
+		transformedFormat = "ChatCompletionRequest"
 		next := cloneMap(msgData)
 		if msgs, ok := proxyTransformChatCompletionRequest(msgData, guildID, baseOrigin); ok {
 			next["messages"] = msgs
@@ -376,12 +376,12 @@ func proxyApplyAdditionalTransforms(guildID, baseOrigin, format string, raw inte
 		transformedFormat = "PerspectiveFormat"
 		transformedData = proxyTransformAnomaly(msgData)
 	case "AgentsHealthReport":
-		transformedFormat = format
+		transformedFormat = "healthReport"
 	case "StopGuildResponse":
 		transformedFormat = "stoppingChat"
 	case "ParticipantList":
-		transformedFormat = format
-		transformedData = msgData
+		transformedFormat = "participants"
+		transformedData = msgData["participants"]
 	default:
 		transformedFormat = formatType
 	}
