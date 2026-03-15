@@ -4,7 +4,9 @@ type ServerConfig struct {
 	DatabaseURL             string
 	RedisURL                string
 	NATSUrl                 string
+	Backend                 string // "redis" (default) or "nats"
 	EmbeddedRedisAddr       string
+	EmbeddedNATSAddr        string // Bind address for embedded NATS (default: ephemeral)
 	ListenAddress           string
 	ManagerAPIBaseURL       string
 	DataDir                 string

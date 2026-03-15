@@ -50,32 +50,76 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 	}
 	defer db.Close()
 
-	var redisClient *redis.Client
-	redisAddr := cfg.RedisURL
-	if redisAddr == "" {
-		embeddedAddr := strings.TrimSpace(cfg.EmbeddedRedisAddr)
-		if embeddedAddr == "" {
-			embeddedAddr = defaultEmbeddedRedisAddr
-		}
-		l.Info("No redis address provided. Booting Embedded Miniredis...", "bind_addr", embeddedAddr)
-		mredis, err := embed.StartEmbeddedRedisAt(embeddedAddr)
-		if err != nil {
-			return fmt.Errorf("failed to start miniredis: %w", err)
-		}
-		defer mredis.Close()
-		redisAddr = mredis.Addr()
-		l.Info("Embedded miniredis started", "redis_addr", redisAddr)
-		redisClient = mredis.Client()
-	} else {
-		l.Info("Using external redis", "redis_addr", redisAddr)
-		redisClient = redis.NewClient(&redis.Options{Addr: redisAddr})
+	// Determine backend and start only the required embedded servers.
+	backend := strings.ToLower(strings.TrimSpace(cfg.Backend))
+	if backend == "" {
+		backend = "redis"
 	}
 
-	defer redisClient.Close()
-	if host, port, err := net.SplitHostPort(redisAddr); err == nil {
-		_ = os.Setenv("REDIS_HOST", host)
-		_ = os.Setenv("REDIS_PORT", port)
+	var (
+		redisClient *redis.Client
+		redisAddr   string
+		natsURL     string
+	)
+
+	switch backend {
+	case "redis":
+		redisAddr = cfg.RedisURL
+		if redisAddr == "" {
+			embeddedAddr := strings.TrimSpace(cfg.EmbeddedRedisAddr)
+			if embeddedAddr == "" {
+				embeddedAddr = defaultEmbeddedRedisAddr
+			}
+			l.Info("No redis address provided. Booting Embedded Miniredis...", "bind_addr", embeddedAddr)
+			mredis, err := embed.StartEmbeddedRedisAt(embeddedAddr)
+			if err != nil {
+				return fmt.Errorf("failed to start miniredis: %w", err)
+			}
+			defer mredis.Close()
+			redisAddr = mredis.Addr()
+			l.Info("Embedded miniredis started", "redis_addr", redisAddr)
+			redisClient = mredis.Client()
+		} else {
+			l.Info("Using external redis", "redis_addr", redisAddr)
+			redisClient = redis.NewClient(&redis.Options{Addr: redisAddr})
+		}
+		if host, port, err := net.SplitHostPort(redisAddr); err == nil {
+			_ = os.Setenv("REDIS_HOST", host)
+			_ = os.Setenv("REDIS_PORT", port)
+		}
+		natsURL = cfg.NATSUrl // allow external NATS with Redis backend
+
+	case "nats":
+		natsURL = cfg.NATSUrl
+		if natsURL == "" {
+			l.Info("No NATS address provided with --backend nats. Booting Embedded NATS...", "bind_addr", cfg.EmbeddedNATSAddr)
+			embeddedNATS, err := embed.StartEmbeddedNATSAt(cfg.EmbeddedNATSAddr)
+			if err != nil {
+				return fmt.Errorf("failed to start embedded NATS: %w", err)
+			}
+			defer embeddedNATS.Close()
+			natsURL = embeddedNATS.ClientURL()
+			l.Info("Embedded NATS started", "nats_url", natsURL)
+		}
+		if cfg.RedisURL != "" {
+			redisAddr = cfg.RedisURL
+			l.Info("Using external redis for leader election", "redis_addr", redisAddr)
+			redisClient = redis.NewClient(&redis.Options{Addr: redisAddr})
+			if host, port, err := net.SplitHostPort(redisAddr); err == nil {
+				_ = os.Setenv("REDIS_HOST", host)
+				_ = os.Setenv("REDIS_PORT", port)
+			}
+		}
+
+	default:
+		return fmt.Errorf("unsupported backend %q; must be \"redis\" or \"nats\"", backend)
 	}
+
+	defer func() {
+		if redisClient != nil {
+			redisClient.Close()
+		}
+	}()
 
 	// Build messaging backend and control plane. Both share the same transport (Redis or NATS).
 	var (
@@ -84,10 +128,10 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		statusStore  supervisor.AgentStatusStore
 	)
 
-	if cfg.NATSUrl != "" {
-		nc, err := nats.Connect(cfg.NATSUrl)
+	if natsURL != "" {
+		nc, err := nats.Connect(natsURL)
 		if err != nil {
-			return fmt.Errorf("failed to connect to NATS at %s: %w", cfg.NATSUrl, err)
+			return fmt.Errorf("failed to connect to NATS at %s: %w", natsURL, err)
 		}
 		natsBackend, err := messaging.NewNATSBackend(nc)
 		if err != nil {
@@ -107,8 +151,8 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		msgBackend = natsBackend
 		controlPlane = natsCP
 		statusStore = natsStatus
-		_ = os.Setenv("NATS_URL", cfg.NATSUrl)
-		l.Info("Using NATS messaging + control plane", "nats_url", cfg.NATSUrl)
+		_ = os.Setenv("NATS_URL", natsURL)
+		l.Info("Using NATS messaging + control plane", "nats_url", natsURL)
 	} else {
 		msgBackend = messaging.NewRedisBackend(redisClient)
 		controlPlane = control.NewRedisControlTransport(redisClient)
@@ -188,7 +232,8 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 
 	var elector leader.LeaderElector
 
-	if cfg.LeaderElectionMode == "raft" {
+	switch {
+	case cfg.LeaderElectionMode == "raft":
 		raftCfg := leader.RaftConfig{
 			NodeID:          nodeID,
 			RaftBindAddr:    cfg.RaftBindAddr,
@@ -200,8 +245,11 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		if err != nil {
 			return fmt.Errorf("failed to start raft elector: %w", err)
 		}
-	} else {
+	case redisClient != nil:
 		elector = leader.NewRedisElector(redisClient, nodeID, "forge:control:leader", 5*time.Second)
+	default:
+		l.Info("No Redis available; using single-node leader elector")
+		elector = leader.NewSingleNodeElector()
 	}
 
 	wg.Add(1)
@@ -263,7 +311,7 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		clientCfg := &ClientConfig{
 			ServerURL:         clientServerURL,
 			RedisURL:          redisAddr,
-			NATSUrl:           cfg.NATSUrl,
+			NATSUrl:           natsURL,
 			DataDir:           cfg.DataDir,
 			CPUs:              cfg.ClientCPUs,
 			Memory:            cfg.ClientMemory,

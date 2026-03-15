@@ -77,20 +77,11 @@ func StartClient(ctx context.Context, config *ClientConfig) error {
 	log.Info("Starting Forge client daemon",
 		"server_url", config.ServerURL,
 		"redis_url", config.RedisURL,
+		"nats_url", config.NATSUrl,
 		"cpus", config.CPUs,
 		"memory_mb", config.Memory,
 		"gpus", config.GPUs,
 	)
-
-	if config.RedisURL == "" {
-		return fmt.Errorf("redis URL is required for distributed client mode")
-	}
-
-	rdb := redis.NewClient(&redis.Options{Addr: config.RedisURL})
-	defer rdb.Close()
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("failed to connect to redis at %s: %w", config.RedisURL, err)
-	}
 
 	var controlPlane control.ControlPlane
 	var statusStore supervisor.AgentStatusStore
@@ -111,9 +102,16 @@ func StartClient(ctx context.Context, config *ClientConfig) error {
 		}
 		controlPlane = natsCP
 		statusStore = natsStatus
-	} else {
+	} else if config.RedisURL != "" {
+		rdb := redis.NewClient(&redis.Options{Addr: config.RedisURL})
+		defer rdb.Close()
+		if err := rdb.Ping(ctx).Err(); err != nil {
+			return fmt.Errorf("failed to connect to redis at %s: %w", config.RedisURL, err)
+		}
 		controlPlane = control.NewRedisControlTransport(rdb)
 		statusStore = supervisor.NewRedisAgentStatusStore(rdb)
+	} else {
+		return fmt.Errorf("either --redis or --nats URL is required for distributed client mode")
 	}
 
 	reqPayload := struct {

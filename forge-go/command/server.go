@@ -26,6 +26,8 @@ var (
 	serverClientGPUs       int
 	serverClientSupervisor string
 	serverClientAttachTree bool
+	serverBackend          string
+	serverEmbeddedNATSAddr string
 )
 
 func init() {
@@ -45,6 +47,8 @@ func init() {
 	ServerCmd.Flags().IntVar(&serverClientGPUs, "client-gpus", 0, "Override GPUs for in-process client")
 	ServerCmd.Flags().StringVar(&serverClientSupervisor, "client-default-supervisor", "", "Default supervisor for in-process client (docker, bwrap)")
 	ServerCmd.Flags().BoolVar(&serverClientAttachTree, "client-attach-process-tree", false, "When used with --with-client and process supervisor, launch agent processes in the server process tree so they exit with the server")
+	ServerCmd.Flags().StringVar(&serverBackend, "backend", "redis", `Messaging backend: "redis" or "nats"`)
+	ServerCmd.Flags().StringVar(&serverEmbeddedNATSAddr, "embedded-nats-addr", "", "Bind address for embedded NATS (default: ephemeral port)")
 
 	RootCmd.AddCommand(ServerCmd)
 }
@@ -62,7 +66,9 @@ var ServerCmd = &cobra.Command{
 			DatabaseURL:             serverDB,
 			RedisURL:                serverRedis,
 			NATSUrl:                 serverNATS,
+			Backend:                 serverBackend,
 			EmbeddedRedisAddr:       serverEmbeddedRedis,
+			EmbeddedNATSAddr:        serverEmbeddedNATSAddr,
 			ListenAddress:           serverListen,
 			ManagerAPIBaseURL:       serverManagerAPIBase,
 			DataDir:                 serverDataDir,
