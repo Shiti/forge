@@ -3,6 +3,7 @@ package agent
 type ServerConfig struct {
 	DatabaseURL             string
 	RedisURL                string
+	NATSUrl                 string
 	EmbeddedRedisAddr       string
 	ListenAddress           string
 	ManagerAPIBaseURL       string
@@ -25,6 +26,7 @@ type ServerConfig struct {
 type ClientConfig struct {
 	ServerURL         string
 	RedisURL          string
+	NATSUrl           string
 	DataDir           string
 	CPUs              int
 	Memory            int

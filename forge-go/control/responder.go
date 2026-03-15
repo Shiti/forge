@@ -6,33 +6,32 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 )
 
-// ControlQueueResponder sends success or error responses back through Redis
+// ControlQueueResponder sends success or error responses back through the transport.
 type ControlQueueResponder struct {
-	rdb *redis.Client
+	transport ResponseTransport
 }
 
-// NewControlQueueResponder creates a new responder attached to the given Redis instance
-func NewControlQueueResponder(rdb *redis.Client) *ControlQueueResponder {
+// NewControlQueueResponder creates a new responder using the given transport.
+func NewControlQueueResponder(transport ResponseTransport) *ControlQueueResponder {
 	return &ControlQueueResponder{
-		rdb: rdb,
+		transport: transport,
 	}
 }
 
-// SendResponse marshals a success response payload and LPUSHes it to the specific request's response queue
+// SendResponse marshals a success response payload and delivers it to the request's response queue.
 func (r *ControlQueueResponder) SendResponse(ctx context.Context, requestID string, response interface{}) error {
 	b, err := json.Marshal(response)
 	if err != nil {
 		return fmt.Errorf("failed to marshal response payload: %w", err)
 	}
 
-	return r.push(ctx, requestID, b)
+	return r.transport.PushResponse(ctx, requestID, b, 30*time.Second)
 }
 
-// SendError constructs an ErrorResponse payload and LPUSHes it to the specific request's response queue
+// SendError constructs an ErrorResponse payload and delivers it to the request's response queue.
 func (r *ControlQueueResponder) SendError(ctx context.Context, requestID, errMsg string) error {
 	resp := &protocol.ErrorResponse{
 		RequestID: requestID,
@@ -45,19 +44,5 @@ func (r *ControlQueueResponder) SendError(ctx context.Context, requestID, errMsg
 		return fmt.Errorf("failed to marshal error payload: %w", err)
 	}
 
-	return r.push(ctx, requestID, b)
-}
-
-func (r *ControlQueueResponder) push(ctx context.Context, requestID string, payload []byte) error {
-	key := fmt.Sprintf("forge:control:response:%s", requestID)
-
-	pipe := r.rdb.Pipeline()
-	pipe.LPush(ctx, key, payload)
-	pipe.Expire(ctx, key, 30*time.Second)
-
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to push response to queue %s: %w", key, err)
-	}
-	return nil
+	return r.transport.PushResponse(ctx, requestID, b, 30*time.Second)
 }

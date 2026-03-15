@@ -9,14 +9,13 @@ import (
 
 	"log/slog"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/helper/idgen"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"gopkg.in/yaml.v3"
 )
 
-func Bootstrap(ctx context.Context, db store.Store, redisClient *redis.Client, spec *protocol.GuildSpec, orgID string, dependencyConfigPath string) (*store.GuildModel, error) {
+func Bootstrap(ctx context.Context, db store.Store, pusher protocol.ControlPusher, spec *protocol.GuildSpec, orgID string, dependencyConfigPath string) (*store.GuildModel, error) {
 	applyDefaults(spec)
 
 	if err := mergeDependencies(spec, dependencyConfigPath); err != nil {
@@ -34,7 +33,7 @@ func Bootstrap(ctx context.Context, db store.Store, redisClient *redis.Client, s
 		return nil, fmt.Errorf("failed to persist guild and agents: %w", err)
 	}
 
-	if err := EnqueueGuildManagerSpawn(ctx, redisClient, spec, orgID); err != nil {
+	if err := EnqueueGuildManagerSpawn(ctx, pusher, spec, orgID); err != nil {
 		return nil, fmt.Errorf("failed to enqueue GMA spawn request: %w", err)
 	}
 
@@ -43,7 +42,7 @@ func Bootstrap(ctx context.Context, db store.Store, redisClient *redis.Client, s
 	return guildModel, nil
 }
 
-func EnqueueGuildManagerSpawn(ctx context.Context, redisClient *redis.Client, spec *protocol.GuildSpec, orgID string) error {
+func EnqueueGuildManagerSpawn(ctx context.Context, pusher protocol.ControlPusher, spec *protocol.GuildSpec, orgID string) error {
 	if spec == nil {
 		return fmt.Errorf("guild spec is required")
 	}
@@ -88,7 +87,7 @@ func EnqueueGuildManagerSpawn(ctx context.Context, redisClient *redis.Client, sp
 		},
 	}
 
-	return protocol.PushSpawnRequest(ctx, redisClient, spawnReq)
+	return protocol.PushSpawnRequest(ctx, pusher, spawnReq)
 }
 
 func normalizeRuntimeSpecIDs(spec *protocol.GuildSpec, guildID string) {

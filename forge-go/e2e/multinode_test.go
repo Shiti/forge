@@ -22,6 +22,7 @@ import (
 	"github.com/rustic-ai/forge/forge-go/messaging"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/scheduler"
+	"github.com/rustic-ai/forge/forge-go/supervisor"
 )
 
 func TestLevel1_MultiNodeSchedulingIntegration(t *testing.T) {
@@ -47,7 +48,7 @@ func TestLevel1_MultiNodeSchedulingIntegration(t *testing.T) {
 	resolver := filesystem.NewFileSystemResolver("/tmp/dummy")
 	fs := filesystem.NewLocalFileStore(resolver)
 
-	server := api.NewServer(db, rdb, msgClient, fs, ":0")
+	server := api.NewServer(db, supervisor.NewRedisAgentStatusStore(rdb), control.NewRedisControlTransport(rdb), msgClient, fs, ":0")
 	_ = server
 
 	// Create a test multiplexer and bind node endpoints manually like in StartServer
@@ -84,7 +85,7 @@ func TestLevel1_MultiNodeSchedulingIntegration(t *testing.T) {
 	require.Len(t, nodes, 2)
 
 	// 4. Start the Global Control Queue Listener mapping spawns to schedules
-	queueListener := control.NewControlQueueListener(rdb)
+	queueListener := control.NewControlQueueListener(control.NewRedisControlTransport(rdb))
 	queueListener.OnSpawn = func(ctx context.Context, req *protocol.SpawnRequest) {
 		nodeID, err := scheduler.GlobalScheduler.Schedule(req.AgentSpec)
 		require.NoError(t, err)
@@ -114,7 +115,7 @@ func TestLevel1_MultiNodeSchedulingIntegration(t *testing.T) {
 		},
 	}
 
-	err = protocol.PushSpawnRequest(ctx, rdb, spawnReq)
+	err = protocol.PushSpawnRequest(ctx, control.NewRedisControlTransport(rdb), spawnReq)
 	require.NoError(t, err)
 
 	// Wait a moment for BRPop -> Schedule -> LPush loop to resolve

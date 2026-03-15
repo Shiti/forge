@@ -1,15 +1,48 @@
+import fcntl
 import logging
 import os
+import socket
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 from typing import Generator
 
 import pytest
+import requests
 from redis import Redis
 
-import sys
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
+def _build_forge_binary(forge_bin: Path, repo_root: Path) -> None:
+    """Build the forge binary with a file lock to prevent concurrent builds.
+
+    When pytest-xdist runs tests in parallel, multiple workers may try to
+    compile the same binary simultaneously. A file lock serializes builds;
+    the second worker skips the build if the binary is < 60 seconds old.
+    """
+    lock_path = forge_bin.parent / ".forge.build.lock"
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            if forge_bin.exists() and (
+                time.time() - os.path.getmtime(str(forge_bin)) < 60
+            ):
+                return
+            subprocess.run(
+                ["go", "build", "-o", str(forge_bin), "main.go"],
+                cwd=str(repo_root / "forge-go"),
+                check=True,
+            )
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _find_repo_root() -> Path:
@@ -52,15 +85,22 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.xdist_group("forge_server")
 class TestForgeRedisIntegration(IntegrationTestABC):
+    @pytest.fixture
+    def wait_time(self) -> float:
+        # Forge agents are out-of-process — give them extra time to start
+        # and for messages to round-trip through Redis under parallel load.
+        return 1.0
+
     @pytest.fixture
     def guild_id(self) -> str:
         return "e2e-guild-1"
 
     @pytest.fixture(scope="module")
     def redis_server(self) -> Generator[int, None, None]:
-        # Start a local redis-server
-        port = 26379
+        # Start a local redis-server on a dynamically allocated free port
+        port = _free_port()
         import shutil
 
         redis_bin = shutil.which("redis-server")
@@ -158,15 +198,11 @@ entries:
             # Start forge daemon
             forge_bin = REPO_ROOT / "forge-go" / "forge"
 
-            # Always compile forge to ensure the test uses the current tree.
-            subprocess.run(
-                ["go", "build", "-o", str(forge_bin), "main.go"],
-                cwd=str(REPO_ROOT / "forge-go"),
-                check=True,
-            )
+            # Build forge binary (serialized across workers to avoid concurrent build slowdowns)
+            _build_forge_binary(forge_bin, REPO_ROOT)
 
             db_path = Path(tmpdir) / "forge.db"
-            listen_port = 19091
+            listen_port = _free_port()
 
             env = os.environ.copy()
             env["REDIS_HOST"] = "localhost"
@@ -196,8 +232,37 @@ entries:
                 stderr=forge_log,
             )
 
-            # Wait for Forge daemon to start up its listeners
-            time.sleep(2)
+            # Wait for Forge daemon HTTP server to be ready
+            server_url = f"http://localhost:{listen_port}"
+            for _ in range(40):
+                try:
+                    resp = requests.get(f"{server_url}/ping", timeout=1)
+                    if resp.status_code == 200:
+                        break
+                except Exception:
+                    time.sleep(0.5)
+            else:
+                forge_proc.kill()
+                pytest.fail(
+                    "Could not start Forge daemon. Log: "
+                    + (Path(tmpdir) / "forge.log").read_text()
+                )
+
+            # Wait for the in-process client node to register (required before spawning agents)
+            for _ in range(40):
+                try:
+                    resp = requests.get(f"{server_url}/nodes", timeout=1)
+                    if resp.status_code == 200 and len(resp.json()) > 0:
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.5)
+            else:
+                forge_proc.kill()
+                pytest.fail(
+                    "Forge client node never registered. Log: "
+                    + (Path(tmpdir) / "forge.log").read_text()
+                )
 
             yield
 

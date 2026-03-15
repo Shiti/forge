@@ -10,7 +10,7 @@ import (
 	"github.com/rustic-ai/forge/forge-go/protocol"
 )
 
-func RetrieveHistory(ctx context.Context, msgClient *messaging.Client, guildID, userID string, sinceID uint64) ([]json.RawMessage, error) {
+func RetrieveHistory(ctx context.Context, msgClient messaging.Backend, guildID, userID string, sinceID uint64) ([]json.RawMessage, error) {
 	userHist, err := msgClient.GetMessagesSince(ctx, guildID, userNotificationsTopic(userID), sinceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed fetching user history: %w", err)

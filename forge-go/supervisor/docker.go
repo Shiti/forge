@@ -17,7 +17,6 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/registry"
@@ -51,13 +50,13 @@ func (a *DockerAgent) IsStopRequested() bool {
 }
 
 type DockerSupervisor struct {
-	cli     *client.Client
-	rdb     *redis.Client
-	managed map[string]*DockerAgent
-	mu      sync.RWMutex
+	cli         *client.Client
+	statusStore AgentStatusStore
+	managed     map[string]*DockerAgent
+	mu          sync.RWMutex
 }
 
-func NewDockerSupervisor(rdb *redis.Client) (*DockerSupervisor, error) {
+func NewDockerSupervisor(statusStore AgentStatusStore) (*DockerSupervisor, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.44"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create docker client: %w", err)
@@ -71,9 +70,9 @@ func NewDockerSupervisor(rdb *redis.Client) (*DockerSupervisor, error) {
 	}
 
 	return &DockerSupervisor{
-		cli:     cli,
-		rdb:     rdb,
-		managed: make(map[string]*DockerAgent),
+		cli:         cli,
+		statusStore: statusStore,
+		managed:     make(map[string]*DockerAgent),
 	}, nil
 }
 
@@ -231,8 +230,8 @@ func (d *DockerSupervisor) Launch(ctx context.Context, guildID string, agentSpec
 	d.managed[key] = agent
 	d.mu.Unlock()
 
-	if d.rdb != nil {
-		_ = WriteStatusKey(ctx, d.rdb, normalizeGuildID(guildID), agentSpec.ID, "local-docker", -1)
+	if d.statusStore != nil {
+		_ = d.statusStore.WriteStatus(ctx, normalizeGuildID(guildID), agentSpec.ID, &AgentStatusJSON{State: "running", NodeID: "local-docker", PID: -1, Timestamp: time.Now()}, 30*time.Second)
 	}
 
 	go d.streamLogs(context.Background(), guildID, agentSpec.ID, resp.ID)
@@ -266,8 +265,8 @@ func (d *DockerSupervisor) monitorContainer(ctx context.Context, guildID string,
 		d.mu.Lock()
 		agent.State = StateStopped
 		d.mu.Unlock()
-		if d.rdb != nil {
-			_ = DeleteStatusKey(ctx, d.rdb, guildID, agent.ID)
+		if d.statusStore != nil {
+			_ = d.statusStore.DeleteStatus(ctx, guildID, agent.ID)
 		}
 		return
 	}
@@ -276,8 +275,8 @@ func (d *DockerSupervisor) monitorContainer(ctx context.Context, guildID string,
 	agent.State = StateRestarting
 	d.mu.Unlock()
 
-	if d.rdb != nil {
-		_ = SetRestartingStatus(ctx, d.rdb, guildID, agent.ID)
+	if d.statusStore != nil {
+		_ = d.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "restarting", Timestamp: time.Now()}, 30*time.Second)
 	}
 
 	if time.Since(agent.StartedAt) > StableTime {
@@ -290,8 +289,8 @@ func (d *DockerSupervisor) monitorContainer(ctx context.Context, guildID string,
 		d.mu.Lock()
 		agent.State = StateFailed
 		d.mu.Unlock()
-		if d.rdb != nil {
-			_ = SetFailedStatus(ctx, d.rdb, guildID, agent.ID)
+		if d.statusStore != nil {
+			_ = d.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "failed", Timestamp: time.Now()}, 300*time.Second)
 		}
 		logger.Error("agent exceeded max restart attempts, giving up")
 		return
@@ -318,8 +317,8 @@ func (d *DockerSupervisor) monitorContainer(ctx context.Context, guildID string,
 		d.mu.Lock()
 		agent.State = StateStopped
 		d.mu.Unlock()
-		if d.rdb != nil {
-			_ = DeleteStatusKey(ctx, d.rdb, guildID, agent.ID)
+		if d.statusStore != nil {
+			_ = d.statusStore.DeleteStatus(ctx, guildID, agent.ID)
 		}
 	}
 }
@@ -369,8 +368,8 @@ func (d *DockerSupervisor) relaunchContainer(ctx context.Context, guildID string
 	agent.StartedAt = time.Now()
 	d.mu.Unlock()
 
-	if d.rdb != nil {
-		_ = WriteStatusKey(ctx, d.rdb, guildID, agent.ID, "local-docker", -1)
+	if d.statusStore != nil {
+		_ = d.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "running", NodeID: "local-docker", PID: -1, Timestamp: time.Now()}, 30*time.Second)
 	}
 
 	go d.streamLogs(context.Background(), guildID, agent.ID, resp.ID)
@@ -449,8 +448,8 @@ func (d *DockerSupervisor) pollStats(ctx context.Context, guildID, agentID, cont
 			}
 			stats.Body.Close()
 
-			if d.rdb != nil {
-				_ = RefreshStatusKey(ctx, d.rdb, guildID, agentID)
+			if d.statusStore != nil {
+				_ = d.statusStore.RefreshStatus(ctx, guildID, agentID, 30*time.Second)
 			}
 		}
 	}
@@ -480,8 +479,8 @@ func (d *DockerSupervisor) Stop(ctx context.Context, guildID, agentID string) er
 	agent.State = StateStopped
 	d.mu.Unlock()
 
-	if d.rdb != nil {
-		_ = DeleteStatusKey(ctx, d.rdb, agent.GuildID, agent.ID)
+	if d.statusStore != nil {
+		_ = d.statusStore.DeleteStatus(ctx, agent.GuildID, agent.ID)
 	}
 
 	return nil

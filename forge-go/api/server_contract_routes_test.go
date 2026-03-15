@@ -18,7 +18,7 @@ func buildContractTestRouter(t *testing.T, st store.Store) *gin.Engine {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
-	srv := NewServer(st, nil, nil, nil, ":0")
+	srv := NewServer(st, nil, nil, nil, nil, ":0")
 	router := gin.New()
 	router.RedirectTrailingSlash = false
 

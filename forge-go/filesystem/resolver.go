@@ -83,7 +83,11 @@ func resolveFileScope(base, orgID, guildID, agentID string) Scope {
 	root := strings.TrimSpace(strings.TrimPrefix(base, "file://"))
 	root = filepath.Clean(root)
 
-	u := url.URL{Scheme: "file", Path: root}
+	// no_tmp_dir=1 tells gocloud.dev/blob/fileblob to create temp files inside
+	// the bucket directory rather than in os.TempDir(). Without this, writes fail
+	// with "invalid cross-device link" when the bucket dir and os.TempDir() are
+	// on different mount points (e.g. bucket on /home, TMPDIR on /tmp).
+	u := url.URL{Scheme: "file", Path: root, RawQuery: "no_tmp_dir=1"}
 	return Scope{
 		Protocol:   "file",
 		BucketURL:  u.String(),

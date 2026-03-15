@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/api"
 	"github.com/rustic-ai/forge/forge-go/control"
@@ -23,6 +24,7 @@ import (
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/scheduler"
 	"github.com/rustic-ai/forge/forge-go/scheduler/leader"
+	"github.com/rustic-ai/forge/forge-go/supervisor"
 )
 
 const defaultEmbeddedRedisAddr = "127.0.0.1:6379"
@@ -75,8 +77,47 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		_ = os.Setenv("REDIS_PORT", port)
 	}
 
+	// Build messaging backend and control plane. Both share the same transport (Redis or NATS).
+	var (
+		msgBackend   messaging.Backend
+		controlPlane control.ControlPlane
+		statusStore  supervisor.AgentStatusStore
+	)
+
+	if cfg.NATSUrl != "" {
+		nc, err := nats.Connect(cfg.NATSUrl)
+		if err != nil {
+			return fmt.Errorf("failed to connect to NATS at %s: %w", cfg.NATSUrl, err)
+		}
+		natsBackend, err := messaging.NewNATSBackend(nc)
+		if err != nil {
+			nc.Close()
+			return fmt.Errorf("failed to create NATS messaging backend: %w", err)
+		}
+		natsCP, err := control.NewNATSControlTransport(nc)
+		if err != nil {
+			nc.Close()
+			return fmt.Errorf("failed to create NATS control transport: %w", err)
+		}
+		natsStatus, err := supervisor.NewNATSAgentStatusStore(nc)
+		if err != nil {
+			nc.Close()
+			return fmt.Errorf("failed to create NATS agent status store: %w", err)
+		}
+		msgBackend = natsBackend
+		controlPlane = natsCP
+		statusStore = natsStatus
+		_ = os.Setenv("NATS_URL", cfg.NATSUrl)
+		l.Info("Using NATS messaging + control plane", "nats_url", cfg.NATSUrl)
+	} else {
+		msgBackend = messaging.NewRedisBackend(redisClient)
+		controlPlane = control.NewRedisControlTransport(redisClient)
+		statusStore = supervisor.NewRedisAgentStatusStore(redisClient)
+		l.Info("Using Redis messaging + control plane")
+	}
+
 	var wg sync.WaitGroup
-	queueListener := control.NewControlQueueListener(redisClient)
+	queueListener := control.NewControlQueueListener(controlPlane)
 
 	queueListener.OnSpawn = func(ctx context.Context, req *protocol.SpawnRequest) {
 		// Load guild model once; used for both messaging config and spec attachment.
@@ -116,7 +157,7 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		}
 
 		wrapperBytes, _ := json.Marshal(wrapper)
-		redisClient.LPush(ctx, "forge:control:node:"+nodeID, wrapperBytes)
+		_ = controlPlane.Push(ctx, "forge:control:node:"+nodeID, wrapperBytes)
 		slog.Default().Info("Scheduled agent to node", "agent", req.AgentSpec.ID, "node_id", nodeID)
 	}
 	queueListener.OnStop = func(ctx context.Context, req *protocol.StopRequest) {
@@ -131,7 +172,7 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 			Payload: payloadBytes,
 		}
 		wrapperBytes, _ := json.Marshal(wrapper)
-		redisClient.LPush(ctx, "forge:control:node:"+placement.NodeID, wrapperBytes)
+		_ = controlPlane.Push(ctx, "forge:control:node:"+placement.NodeID, wrapperBytes)
 		scheduler.GlobalPlacementMap.Remove(req.GuildID, req.AgentID)
 	}
 
@@ -171,7 +212,7 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		}
 	}()
 
-	reconciler := scheduler.NewReconciler(scheduler.GlobalNodeRegistry, scheduler.GlobalPlacementMap, redisClient, elector)
+	reconciler := scheduler.NewReconciler(scheduler.GlobalNodeRegistry, scheduler.GlobalPlacementMap, controlPlane, elector)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -199,9 +240,7 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 	resolver := filesystem.NewFileSystemResolver(fsBasePath)
 	fileStore := filesystem.NewLocalFileStore(resolver)
 
-	msgClient := messaging.NewClient(redisClient)
-
-	httpServer := api.NewServer(db, redisClient, msgClient, fileStore, cfg.ListenAddress)
+	httpServer := api.NewServer(db, statusStore, controlPlane, msgBackend, fileStore, cfg.ListenAddress)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -224,6 +263,7 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		clientCfg := &ClientConfig{
 			ServerURL:         clientServerURL,
 			RedisURL:          redisAddr,
+			NATSUrl:           cfg.NATSUrl,
 			DataDir:           cfg.DataDir,
 			CPUs:              cfg.ClientCPUs,
 			Memory:            cfg.ClientMemory,

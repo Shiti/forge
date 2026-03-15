@@ -23,8 +23,8 @@ func TestListener_HandleSpawnRequest(t *testing.T) {
 	defer rdb.Close()
 	ctx := context.Background()
 
-	// 2. Start the Listener in the background
-	listener := NewControlQueueListener(rdb)
+	transport := NewRedisControlTransport(rdb)
+	listener := NewControlQueueListener(transport)
 
 	handleCh := make(chan *protocol.SpawnRequest, 1)
 	listener.OnSpawn = func(ctx context.Context, req *protocol.SpawnRequest) {
@@ -77,7 +77,8 @@ func TestListener_CustomQueueKey(t *testing.T) {
 	ctx := context.Background()
 
 	const nodeQueue = "forge:control:node:test-node-1"
-	listener := NewControlQueueListenerWithQueue(rdb, nodeQueue)
+	transport := NewRedisControlTransport(rdb)
+	listener := NewControlQueueListenerWithQueue(transport, nodeQueue)
 
 	handleCh := make(chan *protocol.SpawnRequest, 1)
 	listener.OnSpawn = func(ctx context.Context, req *protocol.SpawnRequest) {

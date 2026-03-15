@@ -11,7 +11,7 @@ import (
 
 func TestAgentRegistry(t *testing.T) {
 	// Setup generic server without full redis/db initialization just for routing tests
-	server := NewServer(nil, nil, nil, nil, ":9999")
+	server := NewServer(nil, nil, nil, nil, nil, ":9999")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/registry/agents", server.HandleListAgents)

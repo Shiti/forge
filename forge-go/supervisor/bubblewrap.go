@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/shirou/gopsutil/v3/process"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -24,15 +23,15 @@ import (
 )
 
 type BubblewrapSupervisor struct {
-	mu     sync.RWMutex
-	agents map[string]*ManagedAgent
-	rdb    *redis.Client
+	mu          sync.RWMutex
+	agents      map[string]*ManagedAgent
+	statusStore AgentStatusStore
 }
 
-func NewBubblewrapSupervisor(rdb *redis.Client) *BubblewrapSupervisor {
+func NewBubblewrapSupervisor(statusStore AgentStatusStore) *BubblewrapSupervisor {
 	return &BubblewrapSupervisor{
-		agents: make(map[string]*ManagedAgent),
-		rdb:    rdb,
+		agents:      make(map[string]*ManagedAgent),
+		statusStore: statusStore,
 	}
 }
 
@@ -174,8 +173,8 @@ func (p *BubblewrapSupervisor) startProcess(ctx context.Context, guildID string,
 
 	_ = applyResourceLimits(cmd.Process.Pid, agentSpec)
 
-	if p.rdb != nil {
-		_ = WriteStatusKey(ctx, p.rdb, guildID, agent.ID, "local-node", cmd.Process.Pid)
+	if p.statusStore != nil {
+		_ = p.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "running", NodeID: "local-node", PID: cmd.Process.Pid, Timestamp: time.Now()}, 30*time.Second)
 	}
 
 	go p.monitorProcess(guildID, agent, agentSpec, cmd, bwrapArgs, env)
@@ -196,8 +195,8 @@ func (p *BubblewrapSupervisor) monitorProcess(guildID string, agent *ManagedAgen
 			select {
 			case <-ticker.C:
 				if agent.GetState() == StateRunning {
-					if p.rdb != nil {
-						_ = RefreshStatusKey(ctx, p.rdb, guildID, agent.ID)
+					if p.statusStore != nil {
+						_ = p.statusStore.RefreshStatus(ctx, guildID, agent.ID, 30*time.Second)
 					}
 					pid := agent.GetPID()
 					if pid > 0 {
@@ -233,8 +232,8 @@ func (p *BubblewrapSupervisor) monitorProcess(guildID string, agent *ManagedAgen
 
 	if agent.IsStopRequested() {
 		agent.SetState(StateStopped)
-		if p.rdb != nil {
-			_ = DeleteStatusKey(ctx, p.rdb, guildID, agent.ID)
+		if p.statusStore != nil {
+			_ = p.statusStore.DeleteStatus(ctx, guildID, agent.ID)
 		}
 		return
 	}
@@ -242,8 +241,8 @@ func (p *BubblewrapSupervisor) monitorProcess(guildID string, agent *ManagedAgen
 	agent.SetState(StateRestarting)
 	agent.LastError = err
 
-	if p.rdb != nil {
-		_ = SetRestartingStatus(ctx, p.rdb, guildID, agent.ID)
+	if p.statusStore != nil {
+		_ = p.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "restarting", Timestamp: time.Now()}, 30*time.Second)
 	}
 
 	if time.Since(agent.StartedAt) > StableTime {
@@ -255,8 +254,8 @@ func (p *BubblewrapSupervisor) monitorProcess(guildID string, agent *ManagedAgen
 	delay := ComputeBackoff(agent.RestartCount)
 	if delay == 0 {
 		agent.SetState(StateFailed)
-		if p.rdb != nil {
-			_ = SetFailedStatus(ctx, p.rdb, guildID, agent.ID)
+		if p.statusStore != nil {
+			_ = p.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "failed", Timestamp: time.Now()}, 300*time.Second)
 		}
 		return
 	}
@@ -270,15 +269,15 @@ func (p *BubblewrapSupervisor) monitorProcess(guildID string, agent *ManagedAgen
 				slog.Error("failed to restart bwrap-managed agent", "guild_id", guildID, "agent_id", agent.ID, "error", err)
 				agent.SetState(StateFailed)
 				agent.LastError = err
-				if p.rdb != nil {
-					_ = SetFailedStatus(ctx, p.rdb, guildID, agent.ID)
+				if p.statusStore != nil {
+					_ = p.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "failed", Timestamp: time.Now()}, 300*time.Second)
 				}
 			}
 		}
 	case <-agent.stopCh:
 		agent.SetState(StateStopped)
-		if p.rdb != nil {
-			_ = DeleteStatusKey(ctx, p.rdb, guildID, agent.ID)
+		if p.statusStore != nil {
+			_ = p.statusStore.DeleteStatus(ctx, guildID, agent.ID)
 		}
 	}
 }
@@ -328,9 +327,9 @@ func (p *BubblewrapSupervisor) Stop(ctx context.Context, guildID, agentID string
 		}
 	}
 
-	if p.rdb != nil {
-		_ = DeleteStatusKey(ctx, p.rdb, agent.GuildID, agent.ID)
-		_ = DeleteStatusKey(ctx, p.rdb, unknownGuildKey, agent.ID)
+	if p.statusStore != nil {
+		_ = p.statusStore.DeleteStatus(ctx, agent.GuildID, agent.ID)
+		_ = p.statusStore.DeleteStatus(ctx, unknownGuildKey, agent.ID)
 	}
 
 	return nil

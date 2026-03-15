@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/telemetry"
 	"go.opentelemetry.io/otel"
@@ -14,40 +13,43 @@ import (
 )
 
 const (
-	// ControlQueueRequestKey is the Redis list that holds incoming control requests
+	// ControlQueueRequestKey is the queue key for incoming control requests.
 	ControlQueueRequestKey = "forge:control:requests"
 )
 
-// ControlMessageWrapper represents the raw JSON packet pushed to the queue
+// ControlMessageWrapper represents the raw JSON packet pushed to the queue.
 type ControlMessageWrapper struct {
 	Command string          `json:"command"`
 	Payload json.RawMessage `json:"payload"`
 }
 
-// ControlQueueListener listens for and dispatches incoming control requests from Redis.
+// ControlQueueListener listens for and dispatches incoming control requests.
 type ControlQueueListener struct {
-	rdb             *redis.Client
+	transport       ControlTransport
 	requestQueueKey string
 	stopCh          chan struct{}
 	OnSpawn         func(ctx context.Context, req *protocol.SpawnRequest)
 	OnStop          func(ctx context.Context, req *protocol.StopRequest)
 }
 
-func NewControlQueueListener(rdb *redis.Client) *ControlQueueListener {
-	return NewControlQueueListenerWithQueue(rdb, ControlQueueRequestKey)
+// NewControlQueueListener creates a listener on the default control queue.
+func NewControlQueueListener(transport ControlTransport) *ControlQueueListener {
+	return NewControlQueueListenerWithQueue(transport, ControlQueueRequestKey)
 }
 
-func NewControlQueueListenerWithQueue(rdb *redis.Client, queueKey string) *ControlQueueListener {
+// NewControlQueueListenerWithQueue creates a listener on the specified queue key.
+func NewControlQueueListenerWithQueue(transport ControlTransport, queueKey string) *ControlQueueListener {
 	if queueKey == "" {
 		queueKey = ControlQueueRequestKey
 	}
 	return &ControlQueueListener{
-		rdb:             rdb,
+		transport:       transport,
 		requestQueueKey: queueKey,
 		stopCh:          make(chan struct{}),
 	}
 }
 
+// Start begins the polling loop; blocks until Stop() or ctx cancellation.
 func (l *ControlQueueListener) Start(ctx context.Context) {
 	for {
 		select {
@@ -56,28 +58,22 @@ func (l *ControlQueueListener) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			if depth, err := l.rdb.LLen(ctx, l.requestQueueKey).Result(); err == nil {
+			if depth, err := l.transport.QueueDepth(ctx, l.requestQueueKey); err == nil {
 				telemetry.QueueDepth.WithLabelValues(l.requestQueueKey).Set(float64(depth))
 			}
 
-			res, err := l.rdb.BRPop(ctx, time.Second, l.requestQueueKey).Result()
+			data, err := l.transport.Pop(ctx, l.requestQueueKey, time.Second)
 			if err != nil {
-				if err == redis.Nil {
-					continue
-				}
-				if err == redis.ErrClosed {
-					return
-				}
 				slog.Error("ControlQueueListener error reading queue", "err", err)
 				continue
 			}
-
-			if len(res) < 2 {
+			if data == nil {
+				// timeout — loop and check stopCh/ctx again
 				continue
 			}
 
 			var wrapper ControlMessageWrapper
-			if err := json.Unmarshal([]byte(res[1]), &wrapper); err != nil {
+			if err := json.Unmarshal(data, &wrapper); err != nil {
 				slog.Error("ControlQueueListener failed to parse wrapper", "err", err)
 				continue
 			}
@@ -89,7 +85,7 @@ func (l *ControlQueueListener) Start(ctx context.Context) {
 					if err := json.Unmarshal(wrapper.Payload, &req); err == nil {
 						propagator := otel.GetTextMapPropagator()
 						spanCtx := propagator.Extract(ctx, propagation.MapCarrier(req.TraceContext))
-						spanCtx, span := otel.Tracer("forge.control").Start(spanCtx, "redis.consume")
+						spanCtx, span := otel.Tracer("forge.control").Start(spanCtx, "queue.consume")
 						span.End()
 
 						telemetry.QueueConsumeTotal.WithLabelValues(l.requestQueueKey, "spawn").Inc()
@@ -117,6 +113,7 @@ func (l *ControlQueueListener) Start(ctx context.Context) {
 	}
 }
 
+// Stop signals the listener loop to exit.
 func (l *ControlQueueListener) Stop() {
 	close(l.stopCh)
 }

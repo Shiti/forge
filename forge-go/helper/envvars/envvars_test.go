@@ -158,6 +158,100 @@ func TestBuildAgentEnv_RedisOSOverride(t *testing.T) {
 	}
 }
 
+func TestBuildAgentEnv_NATSAutoInjection(t *testing.T) {
+	ctx := context.Background()
+
+	guildSpec := &protocol.GuildSpec{
+		ID:   "test-nats",
+		Name: "Test NATS",
+		Properties: map[string]interface{}{
+			"messaging": map[string]interface{}{
+				"backend_module": "rustic_ai.nats.messaging.backend",
+				"backend_class":  "NATSMessagingBackend",
+			},
+		},
+	}
+
+	agentSpec := &protocol.AgentSpec{
+		ID:        "AgentNATS",
+		Name:      "NATS Agent",
+		ClassName: "test.AgentNATS",
+	}
+
+	// Case 1: NATS_URL env var set — should inject that URL.
+	t.Setenv("NATS_URL", "nats://nats.example.com:4222")
+
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}})
+	if err != nil {
+		t.Fatalf("BuildAgentEnv failed: %v", err)
+	}
+
+	envMap := make(map[string]string)
+	for _, e := range envSlice {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	if envMap["FORGE_CLIENT_TYPE"] != "NATSMessagingBackend" {
+		t.Errorf("Expected FORGE_CLIENT_TYPE=NATSMessagingBackend, got %s", envMap["FORGE_CLIENT_TYPE"])
+	}
+
+	var parsedBackend map[string]interface{}
+	if err := json.Unmarshal([]byte(envMap["FORGE_CLIENT_PROPERTIES_JSON"]), &parsedBackend); err != nil {
+		t.Fatalf("Failed to parse FORGE_CLIENT_PROPERTIES_JSON: %v", err)
+	}
+	natsClient, ok := parsedBackend["nats_client"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("nats_client missing from FORGE_CLIENT_PROPERTIES_JSON: %v", parsedBackend)
+	}
+	servers, ok := natsClient["servers"].([]interface{})
+	if !ok || len(servers) == 0 {
+		t.Fatalf("nats_client.servers missing or empty: %v", natsClient)
+	}
+	if servers[0] != "nats://nats.example.com:4222" {
+		t.Errorf("Expected nats://nats.example.com:4222, got %v", servers[0])
+	}
+
+	// NATS_URL should also be forwarded in the env
+	if envMap["NATS_URL"] != "nats://nats.example.com:4222" {
+		t.Errorf("Expected NATS_URL forwarded, got %s", envMap["NATS_URL"])
+	}
+
+	// Case 2: No NATS_URL set — should fall back to nats://localhost:4222.
+	t.Setenv("NATS_URL", "")
+
+	envSlice2, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}})
+	if err != nil {
+		t.Fatalf("BuildAgentEnv failed: %v", err)
+	}
+
+	envMap2 := make(map[string]string)
+	for _, e := range envSlice2 {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap2[parts[0]] = parts[1]
+		}
+	}
+
+	var parsedBackend2 map[string]interface{}
+	if err := json.Unmarshal([]byte(envMap2["FORGE_CLIENT_PROPERTIES_JSON"]), &parsedBackend2); err != nil {
+		t.Fatalf("Failed to parse FORGE_CLIENT_PROPERTIES_JSON: %v", err)
+	}
+	natsClient2, ok := parsedBackend2["nats_client"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("nats_client missing from FORGE_CLIENT_PROPERTIES_JSON (fallback): %v", parsedBackend2)
+	}
+	servers2, ok := natsClient2["servers"].([]interface{})
+	if !ok || len(servers2) == 0 {
+		t.Fatalf("nats_client.servers missing or empty (fallback): %v", natsClient2)
+	}
+	if servers2[0] != "nats://localhost:4222" {
+		t.Errorf("Expected fallback nats://localhost:4222, got %v", servers2[0])
+	}
+}
+
 func TestBuildAgentEnv_SerializesAgentDependencyMap(t *testing.T) {
 	ctx := context.Background()
 

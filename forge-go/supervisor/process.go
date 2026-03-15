@@ -13,7 +13,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/shirou/gopsutil/v3/process"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -27,7 +26,7 @@ import (
 type ProcessSupervisor struct {
 	mu          sync.RWMutex
 	agents      map[string]*ManagedAgent
-	rdb         *redis.Client
+	statusStore AgentStatusStore
 	workDirBase string
 	orgID       string
 	detachGroup bool
@@ -55,10 +54,10 @@ func WithAttachedProcessTree() ProcessSupervisorOption {
 	}
 }
 
-func NewProcessSupervisor(rdb *redis.Client, opts ...ProcessSupervisorOption) *ProcessSupervisor {
+func NewProcessSupervisor(statusStore AgentStatusStore, opts ...ProcessSupervisorOption) *ProcessSupervisor {
 	p := &ProcessSupervisor{
 		agents:      make(map[string]*ManagedAgent),
-		rdb:         rdb,
+		statusStore: statusStore,
 		workDirBase: resolveProcessWorkDirBase(""),
 		orgID:       "default-org",
 		detachGroup: true,
@@ -164,8 +163,8 @@ func (p *ProcessSupervisor) startProcess(ctx context.Context, guildID string, ag
 
 	_ = applyResourceLimits(cmd.Process.Pid, agentSpec)
 
-	if p.rdb != nil {
-		_ = WriteStatusKey(ctx, p.rdb, guildID, agent.ID, "local-node", cmd.Process.Pid)
+	if p.statusStore != nil {
+		_ = p.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "running", NodeID: "local-node", PID: cmd.Process.Pid, Timestamp: time.Now()}, 30*time.Second)
 	}
 
 	go p.monitorProcess(guildID, agent, agentSpec, cmd, runtimeCmd, env)
@@ -273,8 +272,8 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 			select {
 			case <-ticker.C:
 				if agent.GetState() == StateRunning {
-					if p.rdb != nil {
-						_ = RefreshStatusKey(ctx, p.rdb, guildID, agent.ID)
+					if p.statusStore != nil {
+						_ = p.statusStore.RefreshStatus(ctx, guildID, agent.ID, 30*time.Second)
 					}
 					pid := agent.GetPID()
 					if pid > 0 {
@@ -310,8 +309,8 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 
 	if agent.IsStopRequested() {
 		agent.SetState(StateStopped)
-		if p.rdb != nil {
-			_ = DeleteStatusKey(ctx, p.rdb, guildID, agent.ID)
+		if p.statusStore != nil {
+			_ = p.statusStore.DeleteStatus(ctx, guildID, agent.ID)
 		}
 		return
 	}
@@ -319,8 +318,8 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 	agent.SetState(StateRestarting)
 	agent.LastError = err
 
-	if p.rdb != nil {
-		_ = SetRestartingStatus(ctx, p.rdb, guildID, agent.ID)
+	if p.statusStore != nil {
+		_ = p.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "restarting", Timestamp: time.Now()}, 30*time.Second)
 	}
 
 	if time.Since(agent.StartedAt) > StableTime {
@@ -332,8 +331,8 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 	delay := ComputeBackoff(agent.RestartCount)
 	if delay == 0 {
 		agent.SetState(StateFailed)
-		if p.rdb != nil {
-			_ = SetFailedStatus(ctx, p.rdb, guildID, agent.ID)
+		if p.statusStore != nil {
+			_ = p.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "failed", Timestamp: time.Now()}, 300*time.Second)
 		}
 		return
 	}
@@ -347,15 +346,15 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 				slog.Error("failed to restart process-managed agent", "guild_id", guildID, "agent_id", agent.ID, "error", err)
 				agent.SetState(StateFailed)
 				agent.LastError = err
-				if p.rdb != nil {
-					_ = SetFailedStatus(ctx, p.rdb, guildID, agent.ID)
+				if p.statusStore != nil {
+					_ = p.statusStore.WriteStatus(ctx, guildID, agent.ID, &AgentStatusJSON{State: "failed", Timestamp: time.Now()}, 300*time.Second)
 				}
 			}
 		}
 	case <-agent.stopCh:
 		agent.SetState(StateStopped)
-		if p.rdb != nil {
-			_ = DeleteStatusKey(ctx, p.rdb, guildID, agent.ID)
+		if p.statusStore != nil {
+			_ = p.statusStore.DeleteStatus(ctx, guildID, agent.ID)
 		}
 	}
 }
@@ -377,9 +376,9 @@ func (p *ProcessSupervisor) Stop(ctx context.Context, guildID, agentID string) e
 		_ = terminateProcessTree(pid, p.detachGroup)
 	}
 
-	if p.rdb != nil {
-		_ = DeleteStatusKey(ctx, p.rdb, agent.GuildID, agent.ID)
-		_ = DeleteStatusKey(ctx, p.rdb, unknownGuildKey, agent.ID)
+	if p.statusStore != nil {
+		_ = p.statusStore.DeleteStatus(ctx, agent.GuildID, agent.ID)
+		_ = p.statusStore.DeleteStatus(ctx, unknownGuildKey, agent.ID)
 	}
 
 	return nil

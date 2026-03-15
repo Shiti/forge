@@ -12,6 +12,7 @@ import (
 var (
 	serverDB               string
 	serverRedis            string
+	serverNATS             string
 	serverEmbeddedRedis    string
 	serverListen           string
 	serverManagerAPIBase   string
@@ -30,6 +31,7 @@ var (
 func init() {
 	ServerCmd.Flags().StringVar(&serverDB, "db", "sqlite://~/.forge/data/forge.db", "Database DSN")
 	ServerCmd.Flags().StringVar(&serverRedis, "redis", "", "Redis URL (default: embedded miniredis)")
+	ServerCmd.Flags().StringVar(&serverNATS, "nats", "", "NATS URL for data-plane messaging (e.g. nats://localhost:4222); omit to use Redis")
 	ServerCmd.Flags().StringVar(&serverEmbeddedRedis, "embedded-redis-addr", "127.0.0.1:6379", "Bind address for embedded Redis when --redis is not set")
 	ServerCmd.Flags().StringVar(&serverListen, "listen", ":9090", "HTTP server bind address")
 	ServerCmd.Flags().StringVar(&serverManagerAPIBase, "manager-api-base-url", "", "Externally reachable Forge manager API base URL (e.g. http://forge.example.com:9090)")
@@ -59,6 +61,7 @@ var ServerCmd = &cobra.Command{
 		cfg := &agent.ServerConfig{
 			DatabaseURL:             serverDB,
 			RedisURL:                serverRedis,
+			NATSUrl:                 serverNATS,
 			EmbeddedRedisAddr:       serverEmbeddedRedis,
 			ListenAddress:           serverListen,
 			ManagerAPIBaseURL:       serverManagerAPIBase,

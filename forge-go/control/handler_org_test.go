@@ -105,7 +105,7 @@ entries:
 	var mu sync.Mutex
 
 	handler := NewControlQueueHandlerWithFactory(
-		rdb,
+		NewRedisControlTransport(rdb),
 		reg,
 		secrets.NewEnvSecretProvider(),
 		func(orgID string) supervisor.AgentSupervisor {
@@ -187,7 +187,7 @@ entries:
 	var mu sync.Mutex
 
 	handler := NewControlQueueHandlerWithFactory(
-		rdb,
+		NewRedisControlTransport(rdb),
 		reg,
 		secrets.NewEnvSecretProvider(),
 		func(orgID string) supervisor.AgentSupervisor {
@@ -266,7 +266,7 @@ entries:
 	supervisors := make(map[string]*fakeSupervisor)
 	var mu sync.Mutex
 	handler := NewControlQueueHandlerWithFactory(
-		rdb,
+		NewRedisControlTransport(rdb),
 		reg,
 		secrets.NewEnvSecretProvider(),
 		func(orgID string) supervisor.AgentSupervisor {
@@ -390,14 +390,14 @@ entries:
 `)
 
 	handler := NewControlQueueHandlerWithFactory(
-		rdb,
+		NewRedisControlTransport(rdb),
 		reg,
 		secrets.NewEnvSecretProvider(),
 		func(orgID string) supervisor.AgentSupervisor {
 			_ = orgID
 			return supervisor.NewDispatchingSupervisor(
 				"process",
-				supervisor.NewProcessSupervisor(rdb, supervisor.WithWorkDirBase(t.TempDir())),
+				supervisor.NewProcessSupervisor(supervisor.NewRedisAgentStatusStore(rdb), supervisor.WithWorkDirBase(t.TempDir())),
 				nil,
 				nil,
 			)

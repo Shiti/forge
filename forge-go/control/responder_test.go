@@ -24,9 +24,9 @@ func TestResponder_SendResponse(t *testing.T) {
 	defer rdb.Close()
 	ctx := context.Background()
 
-	// 2. Initialize Responder
 	reqID := "req-999"
-	responder := NewControlQueueResponder(rdb)
+	transport := NewRedisControlTransport(rdb)
+	responder := NewControlQueueResponder(transport)
 
 	resp := &protocol.SpawnResponse{
 		RequestID: reqID,
@@ -64,7 +64,8 @@ func TestResponder_SendError(t *testing.T) {
 	defer rdb.Close()
 	ctx := context.Background()
 
-	responder := NewControlQueueResponder(rdb)
+	transport := NewRedisControlTransport(rdb)
+	responder := NewControlQueueResponder(transport)
 	err = responder.SendError(ctx, "err-req", "test failure")
 	require.NoError(t, err)
 

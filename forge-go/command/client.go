@@ -12,6 +12,7 @@ import (
 var (
 	clientServerURL         string
 	clientRedisURL          string
+	clientNATSUrl           string
 	clientDataDir           string
 	clientCPUs              int
 	clientMemory            int
@@ -24,6 +25,7 @@ var (
 func init() {
 	ClientCmd.Flags().StringVar(&clientServerURL, "server", "http://localhost:9090", "Forge server URL for registration")
 	ClientCmd.Flags().StringVar(&clientRedisURL, "redis", "", "Redis URL (must point to identical Redis used by server)")
+	ClientCmd.Flags().StringVar(&clientNATSUrl, "nats", "", "NATS URL for data-plane messaging (must match server --nats flag)")
 	ClientCmd.Flags().StringVar(&clientDataDir, "data-dir", "~/.forge/data", "Base path for local client runtime data")
 	ClientCmd.Flags().IntVar(&clientCPUs, "cpus", 0, "Override detected CPU count")
 	ClientCmd.Flags().IntVar(&clientMemory, "memory", 0, "Override detected memory capacity in MB")
@@ -56,6 +58,7 @@ var ClientCmd = &cobra.Command{
 		cfg := &agent.ClientConfig{
 			ServerURL:         clientServerURL,
 			RedisURL:          clientRedisURL,
+			NATSUrl:           clientNATSUrl,
 			DataDir:           clientDataDir,
 			CPUs:              clientCPUs,
 			Memory:            clientMemory,

@@ -49,7 +49,7 @@ func TestE2E_RusticUIEchoLaunchSingleProcess(t *testing.T) {
 	require.NoError(t, err)
 	forgeRoot := filepath.Clean(filepath.Join(cwd, "..", ".."))
 
-	server := startSingleProcessForgeServer(t, binPath, forgeRoot)
+	server := startSingleProcessForgeServer(t, binPath, forgeRoot, "")
 	client := &http.Client{Timeout: 30 * time.Second}
 
 	seededBlueprintID := seedRusticUIEchoCatalog(t, client, server.rusticBase)
@@ -141,7 +141,11 @@ func TestE2E_RusticUIEchoLaunchSingleProcess(t *testing.T) {
 	})
 }
 
-func startSingleProcessForgeServer(t *testing.T, binPath, forgeRoot string) *singleProcessForgeServer {
+// startSingleProcessForgeServer launches a forge server subprocess.
+// When natsURL is non-empty, the server is started with --nats and
+// FORGE_EXTRA_DEPS is set to rusticai-nats so that Python agents
+// install the NATS messaging backend from PyPI via uvx.
+func startSingleProcessForgeServer(t *testing.T, binPath, forgeRoot string, natsURL string) *singleProcessForgeServer {
 	t.Helper()
 
 	listenAddr, err := reserveLocalAddr()
@@ -158,11 +162,10 @@ func startSingleProcessForgeServer(t *testing.T, binPath, forgeRoot string) *sin
 	dependencyConfigPath := filepath.Join(forgeRoot, "forge-go", "conf", "agent-dependencies.yaml")
 	forgePythonPath := filepath.Join(forgeRoot, "forge-python")
 
-	cmd := exec.Command(
-		binPath,
+	args := []string{
 		"server",
 		"--listen", listenAddr,
-		"--db", "sqlite:///"+dbPath,
+		"--db", "sqlite:///" + dbPath,
 		"--embedded-redis-addr", embeddedRedisAddr,
 		"--data-dir", dataDir,
 		"--dependency-config", dependencyConfigPath,
@@ -170,7 +173,12 @@ func startSingleProcessForgeServer(t *testing.T, binPath, forgeRoot string) *sin
 		"--client-node-id", "rustic-ui-single-node",
 		"--client-metrics-addr", "127.0.0.1:0",
 		"--client-default-supervisor", "process",
-	)
+	}
+	if natsURL != "" {
+		args = append(args, "--nats", natsURL)
+	}
+
+	cmd := exec.Command(binPath, args...)
 	cmd.Dir = forgeRoot
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -178,7 +186,7 @@ func startSingleProcessForgeServer(t *testing.T, binPath, forgeRoot string) *sin
 	stderr := &bytes.Buffer{}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	cmd.Env = append(
+	env := append(
 		os.Environ(),
 		"FORGE_AGENT_REGISTRY="+registryPath,
 		"FORGE_PYTHON_PKG="+forgePythonPath,
@@ -188,6 +196,11 @@ func startSingleProcessForgeServer(t *testing.T, binPath, forgeRoot string) *sin
 		"FORGE_QUOTA_MODE=local",
 		"PYTHONUNBUFFERED=1",
 	)
+	if natsURL != "" {
+		// Use the published rusticai-nats package from PyPI for Python agents.
+		env = append(env, "FORGE_EXTRA_DEPS=rusticai-nats")
+	}
+	cmd.Env = env
 
 	require.NoError(t, cmd.Start(), "failed to start forge server process")
 	pid := cmd.Process.Pid

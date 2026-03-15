@@ -12,10 +12,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/guild"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/protocol"
+	"github.com/rustic-ai/forge/forge-go/supervisor"
 )
 
 type CreateGuildRequest struct {
@@ -47,7 +47,7 @@ func (s *Server) HandleCreateGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	model, err := guild.Bootstrap(r.Context(), s.store, s.redisClient, req.Spec, req.OrganizationID, dependencyConfigPath())
+	model, err := guild.Bootstrap(r.Context(), s.store, s.controlPusher, req.Spec, req.OrganizationID, dependencyConfigPath())
 	if err != nil {
 		ReplyError(w, http.StatusInternalServerError, "failed to bootstrap guild: "+err.Error())
 		return
@@ -75,7 +75,7 @@ func (s *Server) HandleRelaunchGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isRunning, err := isManagerAgentRunning(r.Context(), s.redisClient, guildID)
+	isRunning, err := isManagerAgentRunning(r.Context(), s.statusStore, guildID)
 	if err != nil {
 		ReplyError(w, http.StatusInternalServerError, "failed to inspect guild runtime state")
 		return
@@ -89,7 +89,7 @@ func (s *Server) HandleRelaunchGuild(w http.ResponseWriter, r *http.Request) {
 		}
 
 		spec := store.ToGuildSpec(guildModel)
-		if err := guild.EnqueueGuildManagerSpawn(r.Context(), s.redisClient, spec, guildModel.OrganizationID); err != nil {
+		if err := guild.EnqueueGuildManagerSpawn(r.Context(), s.controlPusher, spec, guildModel.OrganizationID); err != nil {
 			ReplyError(w, http.StatusInternalServerError, "failed to enqueue relaunch")
 			return
 		}
@@ -100,27 +100,14 @@ func (s *Server) HandleRelaunchGuild(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func isManagerAgentRunning(ctx context.Context, rdb *redis.Client, guildID string) (bool, error) {
+func isManagerAgentRunning(ctx context.Context, statusStore supervisor.AgentStatusStore, guildID string) (bool, error) {
 	managerID := guildID + "#manager_agent"
-	key := fmt.Sprintf("forge:agent:status:%s:%s", guildID, managerID)
-	raw, err := rdb.Get(ctx, key).Result()
+	status, err := statusStore.GetStatus(ctx, guildID, managerID)
 	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return false, nil
-		}
 		return false, err
 	}
-	if raw == "" {
+	if status == nil {
 		return false, nil
-	}
-
-	var status struct {
-		State string `json:"state"`
-	}
-	if err := json.Unmarshal([]byte(raw), &status); err != nil {
-		// If older/foreign writers change payload shape, existence of a live status key
-		// is still the best signal we have for "running".
-		return true, nil
 	}
 
 	switch strings.ToLower(status.State) {

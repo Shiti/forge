@@ -6,22 +6,22 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/scheduler/leader"
 )
 
 type Reconciler struct {
 	registry     *NodeRegistry
 	placementMap *PlacementMap
-	redisClient  *redis.Client
+	transport    protocol.ControlPusher
 	elector      leader.LeaderElector
 }
 
-func NewReconciler(r *NodeRegistry, p *PlacementMap, rdb *redis.Client, el leader.LeaderElector) *Reconciler {
+func NewReconciler(r *NodeRegistry, p *PlacementMap, transport protocol.ControlPusher, el leader.LeaderElector) *Reconciler {
 	return &Reconciler{
 		registry:     r,
 		placementMap: p,
-		redisClient:  rdb,
+		transport:    transport,
 		elector:      el,
 	}
 }
@@ -71,7 +71,7 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 				wrapper["payload"] = rawPayload
 				wrappedBytes, _ := json.Marshal(wrapper)
 
-				r.redisClient.LPush(ctx, "forge:control:requests", wrappedBytes)
+				_ = r.transport.Push(ctx, "forge:control:requests", wrappedBytes)
 				slog.Default().Info("Re-enqueued orphaned agent for cluster redistribution", "guild", o.GuildID, "agent", o.AgentID)
 			} else {
 				slog.Default().Error("Failed to deserialize orphaned payload buffer", "error", err)

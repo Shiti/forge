@@ -1,3 +1,6 @@
+import fcntl
+import os
+import socket
 import subprocess
 import tempfile
 import time
@@ -7,6 +10,37 @@ from typing import Generator
 import pytest
 import requests
 from redis import Redis
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
+def _build_forge_binary(forge_bin: Path, repo_root: Path) -> None:
+    """Build the forge binary with a file lock to prevent concurrent builds.
+
+    When pytest-xdist runs tests in parallel, multiple workers may try to
+    compile the same binary simultaneously. A file lock serializes builds;
+    the second worker skips the build if the binary is < 60 seconds old.
+    """
+    lock_path = forge_bin.parent / ".forge.build.lock"
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            if forge_bin.exists() and (
+                time.time() - os.path.getmtime(str(forge_bin)) < 60
+            ):
+                return
+            subprocess.run(
+                ["go", "build", "-o", str(forge_bin), "main.go"],
+                cwd=str(repo_root / "forge-go"),
+                check=True,
+            )
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _find_repo_root() -> Path:
@@ -27,8 +61,8 @@ repo_root = _find_repo_root()
 
 @pytest.fixture(scope="module")
 def redis_server() -> Generator[int, None, None]:
-    # Start a local redis-server
-    port = 26380  # use different port to avoid clashes
+    # Start a local redis-server on a dynamically allocated free port
+    port = _free_port()
     import shutil
 
     redis_bin = shutil.which("redis-server")
@@ -64,16 +98,12 @@ def redis_server() -> Generator[int, None, None]:
 def go_server(redis_server) -> Generator[str, None, None]:
     forge_bin = repo_root / "forge-go" / "forge"
 
-    # Always compile forge to ensure latest code is used
-    subprocess.run(
-        ["go", "build", "-o", str(forge_bin), "main.go"],
-        cwd=str(repo_root / "forge-go"),
-        check=True,
-    )
+    # Build forge binary (serialized across workers to avoid concurrent build slowdowns)
+    _build_forge_binary(forge_bin, repo_root)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "forge_server.db"
-        port = 9091
+        port = _free_port()
 
         # Minimal dependency config to enable guild-scoped file endpoints.
         dep_path = Path(tmpdir) / "deps.yaml"
@@ -134,6 +164,7 @@ filesystem:
         forge_log.close()
 
 
+@pytest.mark.xdist_group("forge_server")
 def test_rest_api_contract_create_guild(go_server):
     """
     Test 8.4.4 & 8.4.7:
@@ -176,6 +207,7 @@ def test_rest_api_contract_create_guild(go_server):
     assert get_data["agents"][0]["class_name"] == "test.Agent1"
 
 
+@pytest.mark.xdist_group("forge_server")
 def test_rest_api_filesystem_contract(go_server):
     """
     Test File System Endpoints

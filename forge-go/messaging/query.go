@@ -12,7 +12,7 @@ import (
 
 // PublishMessage atomically stores a message in the direct-lookup cache, inserts it chronologically
 // into the topic's ZSET, and publishes it via PubSub for live listeners.
-func (c *Client) PublishMessage(ctx context.Context, namespace, topic string, msg *protocol.Message) error {
+func (r *RedisBackend) PublishMessage(ctx context.Context, namespace, topic string, msg *protocol.Message) error {
 	// Set TopicPublishedTo to the bare topic before namespacing, matching Python's
 	// MessagingInterface.publish which sets topic_published_to to the un-namespaced topic.
 	bare := topic
@@ -36,10 +36,10 @@ func (c *Client) PublishMessage(ctx context.Context, namespace, topic string, ms
 	strJSON := string(msgBytes)
 
 	// Pipeline the storage commands
-	pipe := c.rdb.Pipeline()
+	pipe := r.rdb.Pipeline()
 
 	// 1. Store in the absolute lookup cache
-	pipe.Set(ctx, cacheKey, strJSON, c.config.MessageTTL)
+	pipe.Set(ctx, cacheKey, strJSON, r.config.MessageTTL)
 
 	// 2. Add to the chronological ZSET for the topic, using timestamp as the score
 	pipe.ZAdd(ctx, nsTopic, redis.Z{
@@ -52,7 +52,7 @@ func (c *Client) PublishMessage(ctx context.Context, namespace, topic string, ms
 	}
 
 	// 3. Publish for real-time subscribers
-	err = c.rdb.Publish(ctx, nsTopic, strJSON).Err()
+	err = r.rdb.Publish(ctx, nsTopic, strJSON).Err()
 	if err != nil {
 		return fmt.Errorf("failed to publish message %d to topic %s: %w", msg.ID, nsTopic, err)
 	}
@@ -61,9 +61,9 @@ func (c *Client) PublishMessage(ctx context.Context, namespace, topic string, ms
 }
 
 // GetMessagesForTopic retrieves all historical messages from a given topic's ZSET.
-func (c *Client) GetMessagesForTopic(ctx context.Context, namespace, topic string) ([]protocol.Message, error) {
+func (r *RedisBackend) GetMessagesForTopic(ctx context.Context, namespace, topic string) ([]protocol.Message, error) {
 	nsTopic := namespace + ":" + topic
-	rawMessages, err := c.rdb.ZRange(ctx, nsTopic, 0, -1).Result()
+	rawMessages, err := r.rdb.ZRange(ctx, nsTopic, 0, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch messages for topic %s: %w", nsTopic, err)
 	}
@@ -72,7 +72,7 @@ func (c *Client) GetMessagesForTopic(ctx context.Context, namespace, topic strin
 }
 
 // GetMessagesSince retrieves messages added to a topic's ZSET since a given boundary.
-func (c *Client) GetMessagesSince(ctx context.Context, namespace, topic string, sinceID uint64) ([]protocol.Message, error) {
+func (r *RedisBackend) GetMessagesSince(ctx context.Context, namespace, topic string, sinceID uint64) ([]protocol.Message, error) {
 	nsTopic := namespace + ":" + topic
 	gemstone, err := protocol.ParseGemstoneID(sinceID)
 	if err != nil {
@@ -82,7 +82,7 @@ func (c *Client) GetMessagesSince(ctx context.Context, namespace, topic string, 
 	// Add 1 to bound exclusively above the provided timestamp
 	minScore := fmt.Sprintf("%f", float64(gemstone.Timestamp+1))
 
-	rawMessages, err := c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+	rawMessages, err := r.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
 		Key:     nsTopic,
 		Start:   minScore,
 		Stop:    "+inf",
@@ -97,12 +97,12 @@ func (c *Client) GetMessagesSince(ctx context.Context, namespace, topic string, 
 }
 
 // GetMessagesByID uses pipelined GETs to bulk-fetch messages directly by their ID.
-func (c *Client) GetMessagesByID(ctx context.Context, namespace string, msgIDs []uint64) ([]protocol.Message, error) {
+func (r *RedisBackend) GetMessagesByID(ctx context.Context, namespace string, msgIDs []uint64) ([]protocol.Message, error) {
 	if len(msgIDs) == 0 {
 		return nil, nil
 	}
 
-	pipe := c.rdb.Pipeline()
+	pipe := r.rdb.Pipeline()
 	var cmds []*redis.StringCmd
 
 	for _, id := range msgIDs {
@@ -135,6 +135,7 @@ func (c *Client) GetMessagesByID(ctx context.Context, namespace string, msgIDs [
 	return parsed, nil
 }
 
+// parseAndSortMessages is a package-level helper used by both Redis and NATS backends.
 func parseAndSortMessages(raw []string) ([]protocol.Message, error) {
 	var messages []protocol.Message
 

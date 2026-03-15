@@ -8,6 +8,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/rustic-ai/forge/forge-go/control"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 )
@@ -66,7 +67,7 @@ func TestBootstrap_Flow_PersistsRoutesAndEnqueuesSpawn(t *testing.T) {
 		},
 	}
 
-	_, err = Bootstrap(ctx, db, rdb, spec, "org-bootstrap", filepath.Join(t.TempDir(), "missing-agent-deps.yaml"))
+	_, err = Bootstrap(ctx, db, control.NewRedisControlTransport(rdb), spec, "org-bootstrap", filepath.Join(t.TempDir(), "missing-agent-deps.yaml"))
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -161,7 +162,7 @@ func TestBootstrap_Flow_NormalizesSpawnedGuildSpecIDs(t *testing.T) {
 		},
 	}
 
-	guildModel, err := Bootstrap(ctx, db, rdb, spec, "org-bootstrap", filepath.Join(t.TempDir(), "missing-agent-deps.yaml"))
+	guildModel, err := Bootstrap(ctx, db, control.NewRedisControlTransport(rdb), spec, "org-bootstrap", filepath.Join(t.TempDir(), "missing-agent-deps.yaml"))
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -260,7 +261,7 @@ func TestBootstrap_Flow_PersistsResolvedFilesystemPathBase(t *testing.T) {
 		},
 	}
 
-	_, err = Bootstrap(ctx, db, rdb, spec, "org-bootstrap", filepath.Join(t.TempDir(), "missing-agent-deps.yaml"))
+	_, err = Bootstrap(ctx, db, control.NewRedisControlTransport(rdb), spec, "org-bootstrap", filepath.Join(t.TempDir(), "missing-agent-deps.yaml"))
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -381,7 +382,7 @@ func TestBootstrap_Flow_PersistsResolvedS3FilesystemPathBase(t *testing.T) {
 		},
 	}
 
-	_, err = Bootstrap(ctx, db, rdb, spec, "org-bootstrap", filepath.Join(t.TempDir(), "missing-agent-deps.yaml"))
+	_, err = Bootstrap(ctx, db, control.NewRedisControlTransport(rdb), spec, "org-bootstrap", filepath.Join(t.TempDir(), "missing-agent-deps.yaml"))
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}

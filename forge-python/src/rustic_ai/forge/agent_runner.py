@@ -227,6 +227,12 @@ def main():
                 "port": int(os.getenv("REDIS_PORT", "6379")),
                 "db": int(os.getenv("REDIS_DB", "0")),
             }
+        elif (
+            client_type_str == "NATSMessagingBackend"
+            and "nats_client" not in backend_config
+        ):
+            nats_url = os.getenv("NATS_URL", "nats://localhost:4222")
+            backend_config["nats_client"] = {"servers": [nats_url]}
 
         organization_id = client_props.pop("organization_id", None)
 

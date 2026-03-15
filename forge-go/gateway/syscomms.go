@@ -20,15 +20,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func SysCommsHandler(msgClient *messaging.Client, guildStore store.Store, gemGen *protocol.GemstoneGenerator) http.HandlerFunc {
+func SysCommsHandler(msgClient messaging.Backend, guildStore store.Store, gemGen *protocol.GemstoneGenerator) http.HandlerFunc {
 	return sysCommsHandler(msgClient, guildStore, gemGen, WireShapeCanonical)
 }
 
-func SysCommsProxyCompatHandler(msgClient *messaging.Client, guildStore store.Store, gemGen *protocol.GemstoneGenerator) http.HandlerFunc {
+func SysCommsProxyCompatHandler(msgClient messaging.Backend, guildStore store.Store, gemGen *protocol.GemstoneGenerator) http.HandlerFunc {
 	return sysCommsHandler(msgClient, guildStore, gemGen, WireShapeProxyCompat)
 }
 
-func sysCommsHandler(msgClient *messaging.Client, guildStore store.Store, gemGen *protocol.GemstoneGenerator, wireShape WireShapeMode) http.HandlerFunc {
+func sysCommsHandler(msgClient messaging.Backend, guildStore store.Store, gemGen *protocol.GemstoneGenerator, wireShape WireShapeMode) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx, slog.Default())

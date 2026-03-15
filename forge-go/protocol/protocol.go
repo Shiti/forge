@@ -5,13 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
 
 type JSONB map[string]interface{}
+
+// ControlPusher is a minimal interface for enqueueing control messages.
+// Defined here (not in control/) to avoid import cycles: control imports protocol.
+type ControlPusher interface {
+	Push(ctx context.Context, queueKey string, payload []byte) error
+}
 
 type SpawnRequest struct {
 	RequestID        string            `json:"request_id"`
@@ -52,8 +57,9 @@ type ErrorResponse struct {
 	Error     string `json:"error"`
 }
 
-func PushSpawnRequest(ctx context.Context, rdb *redis.Client, req SpawnRequest) error {
-	ctx, span := otel.Tracer("forge.control").Start(ctx, "redis.publish")
+// PushSpawnRequest serialises req and enqueues it via the given ControlPusher.
+func PushSpawnRequest(ctx context.Context, pusher ControlPusher, req SpawnRequest) error {
+	ctx, span := otel.Tracer("forge.control").Start(ctx, "queue.publish")
 	defer span.End()
 
 	if req.TraceContext == nil {
@@ -72,11 +78,11 @@ func PushSpawnRequest(ctx context.Context, rdb *redis.Client, req SpawnRequest) 
 		return fmt.Errorf("serialize spawn request wrapper: %w", err)
 	}
 
-	queueName := "forge:control:requests"
+	const queueName = "forge:control:requests"
 
-	if err := rdb.LPush(ctx, queueName, data).Err(); err != nil {
-		telemetry.QueueProcessingErrorsTotal.WithLabelValues(queueName, "spawn", "lpush_failed").Inc()
-		return fmt.Errorf("lpush to %s: %w", queueName, err)
+	if err := pusher.Push(ctx, queueName, data); err != nil {
+		telemetry.QueueProcessingErrorsTotal.WithLabelValues(queueName, "spawn", "push_failed").Inc()
+		return fmt.Errorf("push to %s: %w", queueName, err)
 	}
 
 	telemetry.QueuePublishTotal.WithLabelValues(queueName, "spawn").Inc()

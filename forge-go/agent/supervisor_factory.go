@@ -1,12 +1,11 @@
 package agent
 
 import (
-	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/control"
 	"github.com/rustic-ai/forge/forge-go/supervisor"
 )
 
-func buildOrgSupervisorFactory(rdb *redis.Client, defaultSupervisor, dataDir string, attachProcessTree bool) control.SupervisorFactory {
+func buildOrgSupervisorFactory(statusStore supervisor.AgentStatusStore, defaultSupervisor, dataDir string, attachProcessTree bool) control.SupervisorFactory {
 	return func(orgID string) supervisor.AgentSupervisor {
 		opts := []supervisor.ProcessSupervisorOption{
 			supervisor.WithOrganizationID(orgID),
@@ -15,15 +14,15 @@ func buildOrgSupervisorFactory(rdb *redis.Client, defaultSupervisor, dataDir str
 		if attachProcessTree {
 			opts = append(opts, supervisor.WithAttachedProcessTree())
 		}
-		processSup := supervisor.NewProcessSupervisor(rdb, opts...)
+		processSup := supervisor.NewProcessSupervisor(statusStore, opts...)
 
 		var dockerSup *supervisor.DockerSupervisor
-		if ds, err := supervisor.NewDockerSupervisor(rdb); err == nil && ds.Available() {
+		if ds, err := supervisor.NewDockerSupervisor(statusStore); err == nil && ds.Available() {
 			dockerSup = ds
 		}
 
 		var bwrapSup *supervisor.BubblewrapSupervisor
-		bs := supervisor.NewBubblewrapSupervisor(rdb)
+		bs := supervisor.NewBubblewrapSupervisor(statusStore)
 		if bs.Available() {
 			bwrapSup = bs
 		}

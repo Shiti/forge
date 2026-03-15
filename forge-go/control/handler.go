@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/helper/envvars"
 	"github.com/rustic-ai/forge/forge-go/protocol"
@@ -24,9 +22,8 @@ const defaultOrganizationID = "default-org"
 
 type SupervisorFactory func(orgID string) supervisor.AgentSupervisor
 
-// ControlQueueHandler wiring layer connecting the Redis listener to the localized ProcessSupervisor
+// ControlQueueHandler wiring layer connecting the control transport to the localized ProcessSupervisor.
 type ControlQueueHandler struct {
-	rdb        *redis.Client
 	registry   *registry.Registry
 	secrets    secrets.SecretProvider
 	sup        supervisor.AgentSupervisor
@@ -40,52 +37,54 @@ type ControlQueueHandler struct {
 	responder  *ControlQueueResponder
 }
 
-// NewControlQueueHandler creates a fully integrated control handler
+// NewControlQueueHandler creates a fully integrated control handler.
 func NewControlQueueHandler(
-	rdb *redis.Client,
+	cp ControlPlane,
 	reg *registry.Registry,
 	sec secrets.SecretProvider,
 	sup supervisor.AgentSupervisor,
 	db store.Store,
 ) *ControlQueueHandler {
-	return NewControlQueueHandlerWithQueue(rdb, reg, sec, sup, db, ControlQueueRequestKey)
+	return NewControlQueueHandlerWithQueue(cp, reg, sec, sup, db, ControlQueueRequestKey)
 }
 
+// NewControlQueueHandlerWithFactory creates a handler that builds per-org supervisors via the factory.
 func NewControlQueueHandlerWithFactory(
-	rdb *redis.Client,
+	cp ControlPlane,
 	reg *registry.Registry,
 	sec secrets.SecretProvider,
 	factory SupervisorFactory,
 	db store.Store,
 ) *ControlQueueHandler {
-	return NewControlQueueHandlerWithQueueFactory(rdb, reg, sec, factory, db, ControlQueueRequestKey)
+	return NewControlQueueHandlerWithQueueFactory(cp, reg, sec, factory, db, ControlQueueRequestKey)
 }
 
-// NewControlQueueHandlerWithQueue creates a fully integrated control handler bound to a specific Redis queue.
+// NewControlQueueHandlerWithQueue creates a control handler bound to a specific queue key.
 func NewControlQueueHandlerWithQueue(
-	rdb *redis.Client,
+	cp ControlPlane,
 	reg *registry.Registry,
 	sec secrets.SecretProvider,
 	sup supervisor.AgentSupervisor,
 	db store.Store,
 	queueKey string,
 ) *ControlQueueHandler {
-	return newControlQueueHandler(rdb, reg, sec, sup, nil, db, queueKey)
+	return newControlQueueHandler(cp, reg, sec, sup, nil, db, queueKey)
 }
 
+// NewControlQueueHandlerWithQueueFactory creates a handler with per-org factory bound to a specific queue key.
 func NewControlQueueHandlerWithQueueFactory(
-	rdb *redis.Client,
+	cp ControlPlane,
 	reg *registry.Registry,
 	sec secrets.SecretProvider,
 	factory SupervisorFactory,
 	db store.Store,
 	queueKey string,
 ) *ControlQueueHandler {
-	return newControlQueueHandler(rdb, reg, sec, nil, factory, db, queueKey)
+	return newControlQueueHandler(cp, reg, sec, nil, factory, db, queueKey)
 }
 
 func newControlQueueHandler(
-	rdb *redis.Client,
+	cp ControlPlane,
 	reg *registry.Registry,
 	sec secrets.SecretProvider,
 	sup supervisor.AgentSupervisor,
@@ -93,11 +92,10 @@ func newControlQueueHandler(
 	db store.Store,
 	queueKey string,
 ) *ControlQueueHandler {
-	listener := NewControlQueueListenerWithQueue(rdb, queueKey)
-	responder := NewControlQueueResponder(rdb)
+	listener := NewControlQueueListenerWithQueue(cp, queueKey)
+	responder := NewControlQueueResponder(cp)
 
 	handler := &ControlQueueHandler{
-		rdb:        rdb,
 		registry:   reg,
 		secrets:    sec,
 		sup:        sup,

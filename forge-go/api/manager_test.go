@@ -21,7 +21,7 @@ func newManagerTestServer(t *testing.T) (*httptest.Server, store.Store) {
 	dbStore, err := store.NewGormStore(store.DriverSQLite, dbPath)
 	require.NoError(t, err)
 
-	srv := NewServer(dbStore, nil, nil, nil, ":0")
+	srv := NewServer(dbStore, nil, nil, nil, nil, ":0")
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /manager/guilds/ensure", srv.HandleManagerEnsureGuild)
 	mux.HandleFunc("GET /manager/guilds/{guild_id}/spec", srv.HandleManagerGetGuildSpec)

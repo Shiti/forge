@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -23,6 +24,7 @@ import (
 	"github.com/rustic-ai/forge/forge-go/registry"
 	"github.com/rustic-ai/forge/forge-go/scheduler"
 	"github.com/rustic-ai/forge/forge-go/secrets"
+	"github.com/rustic-ai/forge/forge-go/supervisor"
 	"github.com/rustic-ai/forge/forge-go/telemetry"
 )
 
@@ -90,6 +92,30 @@ func StartClient(ctx context.Context, config *ClientConfig) error {
 		return fmt.Errorf("failed to connect to redis at %s: %w", config.RedisURL, err)
 	}
 
+	var controlPlane control.ControlPlane
+	var statusStore supervisor.AgentStatusStore
+	if config.NATSUrl != "" {
+		_ = os.Setenv("NATS_URL", config.NATSUrl)
+		nc, err := nats.Connect(config.NATSUrl)
+		if err != nil {
+			return fmt.Errorf("failed to connect to NATS at %s: %w", config.NATSUrl, err)
+		}
+		defer nc.Close()
+		natsCP, err := control.NewNATSControlTransport(nc)
+		if err != nil {
+			return fmt.Errorf("failed to create NATS control transport: %w", err)
+		}
+		natsStatus, err := supervisor.NewNATSAgentStatusStore(nc)
+		if err != nil {
+			return fmt.Errorf("failed to create NATS agent status store: %w", err)
+		}
+		controlPlane = natsCP
+		statusStore = natsStatus
+	} else {
+		controlPlane = control.NewRedisControlTransport(rdb)
+		statusStore = supervisor.NewRedisAgentStatusStore(rdb)
+	}
+
 	reqPayload := struct {
 		NodeID   string                     `json:"node_id"`
 		Capacity scheduler.ResourceCapacity `json:"capacity"`
@@ -132,9 +158,9 @@ func StartClient(ctx context.Context, config *ClientConfig) error {
 		}
 	}
 	sec := secrets.DefaultProvider()
-	supervisorFactory := buildOrgSupervisorFactory(rdb, config.DefaultSupervisor, config.DataDir, config.AttachProcessTree)
+	supervisorFactory := buildOrgSupervisorFactory(statusStore, config.DefaultSupervisor, config.DataDir, config.AttachProcessTree)
 	nodeQueueKey := "forge:control:node:" + config.NodeID
-	queueHandler := control.NewControlQueueHandlerWithQueueFactory(rdb, reg, sec, supervisorFactory, nil, nodeQueueKey)
+	queueHandler := control.NewControlQueueHandlerWithQueueFactory(controlPlane, reg, sec, supervisorFactory, nil, nodeQueueKey)
 	if err := queueHandler.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start node queue listener: %w", err)
 	}

@@ -12,9 +12,11 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/rustic-ai/forge/forge-go/control"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/messaging"
 	"github.com/rustic-ai/forge/forge-go/protocol"
+	"github.com/rustic-ai/forge/forge-go/supervisor"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,7 +85,7 @@ func TestRusticMessagesRoute_ShapesLegacyEnvelope(t *testing.T) {
 	require.NoError(t, err)
 	defer dbStore.Close()
 
-	s := NewServer(dbStore, rdb, msgClient, nil, ":0")
+	s := NewServer(dbStore, supervisor.NewRedisAgentStatusStore(rdb), control.NewRedisControlTransport(rdb), msgClient, nil, ":0")
 	router := s.buildRouter()
 
 	msg := protocol.NewMessage()

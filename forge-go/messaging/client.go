@@ -36,25 +36,47 @@ func DefaultConfig() Config {
 	}
 }
 
-// Client encapsulates the Redis connection and configuration for the Gateway messaging operations.
-type Client struct {
+// RedisBackend encapsulates the Redis connection and configuration for messaging operations.
+type RedisBackend struct {
 	rdb    *redis.Client
 	config Config
 }
 
-// NewClient creates a new messaging Client using the provided Redis connection.
-// It automatically loads configuration from DefaultConfig().
-func NewClient(rdb *redis.Client) *Client {
-	return &Client{
+// Compile-time check that RedisBackend satisfies the Backend interface.
+var _ Backend = (*RedisBackend)(nil)
+
+// NewRedisBackend creates a new RedisBackend using the provided Redis connection.
+func NewRedisBackend(rdb *redis.Client) *RedisBackend {
+	return &RedisBackend{
 		rdb:    rdb,
 		config: DefaultConfig(),
 	}
 }
 
-// NewClientWithConfig creates a new messaging Client with explicit configuration.
-func NewClientWithConfig(rdb *redis.Client, config Config) *Client {
-	return &Client{
+// NewRedisBackendWithConfig creates a new RedisBackend with explicit configuration.
+func NewRedisBackendWithConfig(rdb *redis.Client, config Config) *RedisBackend {
+	return &RedisBackend{
 		rdb:    rdb,
 		config: config,
 	}
+}
+
+// Close is a no-op for Redis — the connection is externally managed.
+func (r *RedisBackend) Close() error {
+	return nil
+}
+
+// Backward-compat aliases so existing callers of messaging.NewClient keep compiling.
+
+// Client is an alias for RedisBackend.
+type Client = RedisBackend
+
+// NewClient creates a new RedisBackend (alias kept for backward compatibility).
+func NewClient(rdb *redis.Client) *RedisBackend {
+	return NewRedisBackend(rdb)
+}
+
+// NewClientWithConfig creates a new RedisBackend with explicit config (alias kept for backward compatibility).
+func NewClientWithConfig(rdb *redis.Client, config Config) *RedisBackend {
+	return NewRedisBackendWithConfig(rdb, config)
 }

@@ -26,10 +26,6 @@ func (s *Server) Healthz(c *gin.Context) {
 }
 
 func (s *Server) Readyz(c *gin.Context) {
-	if s.redisClient == nil || s.redisClient.Ping(c.Request.Context()).Err() != nil {
-		ReplyError(c.Writer, http.StatusServiceUnavailable, "Redis disconnected")
-		return
-	}
 	ReplyJSON(c.Writer, http.StatusOK, map[string]string{"status": "ready"})
 }
 
@@ -174,7 +170,7 @@ func (s *Server) GetBlueprintById(c *gin.Context, blueprintID string, _ contract
 }
 
 func (s *Server) LaunchGuildFromBlueprint(c *gin.Context, blueprintID string, _ contract.LaunchGuildFromBlueprintParams) {
-	s.dispatch(c, handleLaunchGuildFromBlueprint(s.store, s.redisClient), map[string]string{"id": blueprintID})
+	s.dispatch(c, handleLaunchGuildFromBlueprint(s.store, s.controlPusher), map[string]string{"id": blueprintID})
 }
 
 func (s *Server) GetBlueprintAgentIcons(c *gin.Context, blueprintID string, _ contract.GetBlueprintAgentIconsParams) {

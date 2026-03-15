@@ -53,15 +53,15 @@ const (
 )
 
 // UserCommsHandler upgrades an HTTP connection and routes bidirectional user pub/sub traffic
-func UserCommsHandler(msgClient *messaging.Client, guildStore store.Store, gemGen *protocol.GemstoneGenerator) http.HandlerFunc {
+func UserCommsHandler(msgClient messaging.Backend, guildStore store.Store, gemGen *protocol.GemstoneGenerator) http.HandlerFunc {
 	return userCommsHandler(msgClient, guildStore, gemGen, WireShapeCanonical)
 }
 
-func UserCommsProxyCompatHandler(msgClient *messaging.Client, guildStore store.Store, gemGen *protocol.GemstoneGenerator) http.HandlerFunc {
+func UserCommsProxyCompatHandler(msgClient messaging.Backend, guildStore store.Store, gemGen *protocol.GemstoneGenerator) http.HandlerFunc {
 	return userCommsHandler(msgClient, guildStore, gemGen, WireShapeProxyCompat)
 }
 
-func userCommsHandler(msgClient *messaging.Client, guildStore store.Store, gemGen *protocol.GemstoneGenerator, wireShape WireShapeMode) http.HandlerFunc {
+func userCommsHandler(msgClient messaging.Backend, guildStore store.Store, gemGen *protocol.GemstoneGenerator, wireShape WireShapeMode) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx, slog.Default())

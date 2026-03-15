@@ -140,6 +140,13 @@ func ResolveCommand(entry *AgentRegistryEntry) []string {
 		for _, dep := range entry.WithDependencies {
 			cmd = append(cmd, "--with", dep)
 		}
+		if extraDeps := os.Getenv("FORGE_EXTRA_DEPS"); extraDeps != "" {
+			for _, dep := range strings.Split(extraDeps, ",") {
+				if dep = strings.TrimSpace(dep); dep != "" {
+					cmd = append(cmd, "--with", dep)
+				}
+			}
+		}
 		if entry.Package != "" {
 			for _, pkg := range strings.Split(entry.Package, ",") {
 				cmd = append(cmd, "--with", strings.TrimSpace(pkg))

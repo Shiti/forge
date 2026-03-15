@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/guild"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/helper/idgen"
@@ -20,11 +19,11 @@ func RegisterCatalogRoutes(mux *http.ServeMux, s store.Store) {
 	registerCatalogRoutes(mux, s, nil)
 }
 
-func RegisterCatalogRoutesWithRuntime(mux *http.ServeMux, s store.Store, redisClient *redis.Client) {
-	registerCatalogRoutes(mux, s, redisClient)
+func RegisterCatalogRoutesWithRuntime(mux *http.ServeMux, s store.Store, pusher protocol.ControlPusher) {
+	registerCatalogRoutes(mux, s, pusher)
 }
 
-func registerCatalogRoutes(mux *http.ServeMux, s store.Store, redisClient *redis.Client) {
+func registerCatalogRoutes(mux *http.ServeMux, s store.Store, pusher protocol.ControlPusher) {
 	mux.HandleFunc("POST /catalog/blueprints", handleCreateBlueprint(s))
 	mux.HandleFunc("GET /catalog/blueprints", handleListBlueprints(s))
 	mux.HandleFunc("GET /catalog/blueprints/{id}", handleGetBlueprint(s))
@@ -65,7 +64,7 @@ func registerCatalogRoutes(mux *http.ServeMux, s store.Store, redisClient *redis
 	mux.HandleFunc("GET /catalog/users/{user_id}/guilds", handleGetGuildsForUser(s))
 	mux.HandleFunc("GET /catalog/organizations/{org_id}/guilds", handleGetGuildsForOrg(s))
 
-	mux.HandleFunc("POST /catalog/blueprints/{id}/guilds", handleLaunchGuildFromBlueprint(s, redisClient))
+	mux.HandleFunc("POST /catalog/blueprints/{id}/guilds", handleLaunchGuildFromBlueprint(s, pusher))
 }
 
 func handleListBlueprints(s store.Store) http.HandlerFunc {
@@ -1042,7 +1041,7 @@ func handleGetGuildsForOrg(s store.Store) http.HandlerFunc {
 	}
 }
 
-func handleLaunchGuildFromBlueprint(s store.Store, redisClient *redis.Client) http.HandlerFunc {
+func handleLaunchGuildFromBlueprint(s store.Store, pusher protocol.ControlPusher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		blueprintID := r.PathValue("id")
 		var req LaunchGuildFromBlueprintRequest
@@ -1124,8 +1123,8 @@ func handleLaunchGuildFromBlueprint(s store.Store, redisClient *redis.Client) ht
 		}
 
 		var model *store.GuildModel
-		if redisClient != nil {
-			model, err = guild.Bootstrap(r.Context(), s, redisClient, &guildSpec, req.OrgID, dependencyConfigPath())
+		if pusher != nil {
+			model, err = guild.Bootstrap(r.Context(), s, pusher, &guildSpec, req.OrgID, dependencyConfigPath())
 			if err != nil {
 				ReplyError(w, http.StatusInternalServerError, "failed to create guild: "+err.Error())
 				return

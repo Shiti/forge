@@ -15,10 +15,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/rustic-ai/forge/forge-go/control"
 	"github.com/rustic-ai/forge/forge-go/filesystem"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/messaging"
 	"github.com/rustic-ai/forge/forge-go/protocol"
+	"github.com/rustic-ai/forge/forge-go/supervisor"
 )
 
 func setupTestServer(t *testing.T) (*Server, *miniredis.Miniredis, store.Store, *http.ServeMux, func()) {
@@ -51,7 +53,7 @@ filesystem:
 	// Setup messaging client
 	msgClient := messaging.NewClient(rdb)
 
-	srv := NewServer(dbStore, rdb, msgClient, fileStore, ":0")
+	srv := NewServer(dbStore, supervisor.NewRedisAgentStatusStore(rdb), control.NewRedisControlTransport(rdb), msgClient, fileStore, ":0")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/guilds", srv.HandleCreateGuild)

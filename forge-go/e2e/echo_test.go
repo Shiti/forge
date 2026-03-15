@@ -135,15 +135,15 @@ func TestLevel1_EchoAgentIntegration(t *testing.T) {
 			var sup supervisor.AgentSupervisor
 			switch reqSup {
 			case "process":
-				sup = supervisor.NewProcessSupervisor(rdb, supervisor.WithWorkDirBase(t.TempDir()))
+				sup = supervisor.NewProcessSupervisor(supervisor.NewRedisAgentStatusStore(rdb), supervisor.WithWorkDirBase(t.TempDir()))
 			case "docker":
-				ds, err := supervisor.NewDockerSupervisor(rdb)
+				ds, err := supervisor.NewDockerSupervisor(supervisor.NewRedisAgentStatusStore(rdb))
 				if err != nil || !ds.Available() {
 					t.Skip("Docker not available")
 				}
 				sup = ds
 			case "bwrap":
-				bs := supervisor.NewBubblewrapSupervisor(rdb)
+				bs := supervisor.NewBubblewrapSupervisor(supervisor.NewRedisAgentStatusStore(rdb))
 				if !bs.Available() || !bubblewrapUsable() {
 					t.Skip("Bubblewrap not available/usable in this environment")
 				}

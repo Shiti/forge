@@ -80,6 +80,20 @@ func BuildAgentEnv(
 		}
 	}
 
+	// Inject nats_client defaults if using NATS and not already configured.
+	// Matches the Python auto-injection in agent_runner.py.
+	if backendClass == "NATSMessagingBackend" {
+		if _, exists := backendConfig["nats_client"]; !exists {
+			natsURL := os.Getenv("NATS_URL")
+			if natsURL == "" {
+				natsURL = "nats://localhost:4222"
+			}
+			backendConfig["nats_client"] = map[string]interface{}{
+				"servers": []string{natsURL},
+			}
+		}
+	}
+
 	envMap["FORGE_CLIENT_MODULE"] = backendModule
 	envMap["FORGE_CLIENT_TYPE"] = backendClass
 	if len(backendConfig) > 0 {
@@ -130,6 +144,11 @@ func BuildAgentEnv(
 		if val := os.Getenv(key); val != "" {
 			envMap[key] = val
 		}
+	}
+
+	// Forward NATS URL so spawned agents can connect to the same NATS server.
+	if val := os.Getenv("NATS_URL"); val != "" {
+		envMap["NATS_URL"] = val
 	}
 
 	var result []string

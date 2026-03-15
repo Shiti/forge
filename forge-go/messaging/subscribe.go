@@ -12,14 +12,14 @@ import (
 	"github.com/rustic-ai/forge/forge-go/protocol"
 )
 
-// SubMessage wraps a protocol message with its source Redis topic.
+// SubMessage wraps a protocol message with its source topic.
 type SubMessage struct {
 	Topic   string
 	Message *protocol.Message
 }
 
-// Subscription represents an active Redis PubSub listener piping messages into a Go channel.
-type Subscription struct {
+// redisSubscription is the concrete Redis PubSub implementation of Subscription.
+type redisSubscription struct {
 	pubsub *redis.PubSub
 	msgCh  chan SubMessage
 	errCh  chan error
@@ -28,20 +28,23 @@ type Subscription struct {
 	wg sync.WaitGroup
 }
 
+// Compile-time check that redisSubscription satisfies the Subscription interface.
+var _ Subscription = (*redisSubscription)(nil)
+
 // Subscribe opens a connection to the specified Redis PubSub topics and spawns a background runtime
 // equivalent to Python's `run_in_thread` that automatically parses JSON strings into core Message structs.
-func (c *Client) Subscribe(ctx context.Context, namespace string, topics ...string) (*Subscription, error) {
+func (r *RedisBackend) Subscribe(ctx context.Context, namespace string, topics ...string) (Subscription, error) {
 	// Namespace all topics, matching Python's MessagingInterface which
 	// internally prepends {guild_id}: to all topic subscriptions.
 	nsTopics := make([]string, len(topics))
 	for i, t := range topics {
 		nsTopics[i] = namespace + ":" + t
 	}
-	pubsub := c.rdb.Subscribe(ctx, nsTopics...)
+	pubsub := r.rdb.Subscribe(ctx, nsTopics...)
 
 	subscribeCtx, cancel := context.WithCancel(ctx)
 
-	sub := &Subscription{
+	sub := &redisSubscription{
 		pubsub: pubsub,
 		msgCh:  make(chan SubMessage, 100), // Buffer handling sporadic spikes
 		errCh:  make(chan error, 1),
@@ -62,7 +65,7 @@ func (c *Client) Subscribe(ctx context.Context, namespace string, topics ...stri
 	return sub, nil
 }
 
-func (s *Subscription) runSubscriber(ctx context.Context) {
+func (s *redisSubscription) runSubscriber(ctx context.Context) {
 	defer s.wg.Done()
 
 	ch := s.pubsub.Channel()
@@ -98,17 +101,17 @@ func (s *Subscription) runSubscriber(ctx context.Context) {
 }
 
 // Channel returns the receive-only message channel driven by this subscription.
-func (s *Subscription) Channel() <-chan SubMessage {
+func (s *redisSubscription) Channel() <-chan SubMessage {
 	return s.msgCh
 }
 
 // ErrChannel returns a channel that emits terminal subscription errors.
-func (s *Subscription) ErrChannel() <-chan error {
+func (s *redisSubscription) ErrChannel() <-chan error {
 	return s.errCh
 }
 
 // Close gracefully terminates the Pub/Sub background pipeline.
-func (s *Subscription) Close() error {
+func (s *redisSubscription) Close() error {
 	s.cancel()              // Request the goroutine to exit
 	err := s.pubsub.Close() // Disconnect Redis
 	s.wg.Wait()             // Ensure runSubscriber has completely finished

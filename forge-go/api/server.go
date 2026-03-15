@@ -8,35 +8,37 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/rustic-ai/forge/forge-go/api/contract"
 	"github.com/rustic-ai/forge/forge-go/filesystem"
 	"github.com/rustic-ai/forge/forge-go/gateway"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/messaging"
 	"github.com/rustic-ai/forge/forge-go/protocol"
+	"github.com/rustic-ai/forge/forge-go/supervisor"
 )
 
 type Server struct {
 	contract.UnimplementedServer
 
-	store       store.Store
-	redisClient *redis.Client
-	msgClient   *messaging.Client
-	fileStore   *filesystem.LocalFileStore
-	localUI     *localUIState
-	listenAddr  string
-	server      *http.Server
+	store         store.Store
+	statusStore   supervisor.AgentStatusStore
+	controlPusher protocol.ControlPusher
+	msgClient     messaging.Backend
+	fileStore     *filesystem.LocalFileStore
+	localUI       *localUIState
+	listenAddr    string
+	server        *http.Server
 }
 
-func NewServer(db store.Store, rc *redis.Client, mc *messaging.Client, fs *filesystem.LocalFileStore, listenAddr string) *Server {
+func NewServer(db store.Store, statusStore supervisor.AgentStatusStore, controlPusher protocol.ControlPusher, mc messaging.Backend, fs *filesystem.LocalFileStore, listenAddr string) *Server {
 	return &Server{
-		store:       db,
-		redisClient: rc,
-		msgClient:   mc,
-		fileStore:   fs,
-		localUI:     newLocalUIState(),
-		listenAddr:  listenAddr,
+		store:         db,
+		statusStore:   statusStore,
+		controlPusher: controlPusher,
+		msgClient:     mc,
+		fileStore:     fs,
+		localUI:       newLocalUIState(),
+		listenAddr:    listenAddr,
 	}
 }
 
