@@ -3,6 +3,8 @@ package command
 import (
 	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/rustic-ai/forge/forge-go/agent"
 	"github.com/rustic-ai/forge/forge-go/forgepath"
@@ -80,7 +82,7 @@ var ClientCmd = &cobra.Command{
 			ZMQBridgeMode:     clientZMQBridgeMode,
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 
 		if err := agent.StartClient(ctx, cfg); err != nil {
