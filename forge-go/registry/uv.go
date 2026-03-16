@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 )
 
 var (
@@ -40,11 +42,7 @@ func bundledUVXPath() string {
 }
 
 func forgeBinUVXPath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil || homeDir == "" {
-		return ""
-	}
-	uvxPath := filepath.Join(homeDir, ".forge", "bin", uvxExecutableName())
+	uvxPath := forgepath.Resolve(filepath.Join("bin", uvxExecutableName()))
 	if info, err := os.Stat(uvxPath); err == nil && !info.IsDir() {
 		return uvxPath
 	}
@@ -102,12 +100,7 @@ func EnsureUV() error {
 		return addToPath(filepath.Dir(uvxPath))
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %w", err)
-	}
-
-	forgeBin := filepath.Join(homeDir, ".forge", "bin")
+	forgeBin := forgepath.Resolve("bin")
 
 	if err := os.MkdirAll(forgeBin, 0755); err != nil {
 		return fmt.Errorf("failed to create %s: %w", forgeBin, err)

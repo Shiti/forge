@@ -93,14 +93,18 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
         response = self._send_request("get_messages", {"topic": topic})
         return [_normalize_message(msg) for msg in response.get("messages", [])]
 
-    def get_messages_for_topic_since(self, topic: str, msg_id_since: int) -> List[Message]:
+    def get_messages_for_topic_since(
+        self, topic: str, msg_id_since: int
+    ) -> List[Message]:
         response = self._send_request(
             "get_since",
             {"topic": topic, "since_id": msg_id_since},
         )
         return [_normalize_message(msg) for msg in response.get("messages", [])]
 
-    def get_next_message_for_topic_since(self, topic: str, last_message_id: int) -> Optional[Message]:
+    def get_next_message_for_topic_since(
+        self, topic: str, last_message_id: int
+    ) -> Optional[Message]:
         response = self._send_request(
             "get_next",
             {"topic": topic, "since_id": last_message_id},
@@ -142,7 +146,9 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
                 timeout_ms=min(self.request_timeout_ms, 2_000),
             )
         except Exception:
-            logger.debug("Supervisor cleanup request failed during shutdown", exc_info=True)
+            logger.debug(
+                "Supervisor cleanup request failed during shutdown", exc_info=True
+            )
 
         self._shutdown_event.set()
         self._reconnect_event.set()
@@ -200,7 +206,9 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
 
     def _heartbeat_loop(self) -> None:
         interval = self.heartbeat_interval_ms / 1000.0
-        timeout_ms = max(1_000, min(self.request_timeout_ms, self.heartbeat_interval_ms))
+        timeout_ms = max(
+            1_000, min(self.request_timeout_ms, self.heartbeat_interval_ms)
+        )
 
         while not self._shutdown_event.wait(interval):
             try:
@@ -231,8 +239,9 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
                     self._drain_outbound(socket)
 
                     if self._reconnect_event.is_set():
-                        reconnect_cause = self._consume_transport_error() or RuntimeError(
-                            "supervisor ZeroMQ reconnect requested"
+                        reconnect_cause = (
+                            self._consume_transport_error()
+                            or RuntimeError("supervisor ZeroMQ reconnect requested")
                         )
                         socket, poller = self._reset_socket(socket, poller)
                         self._reconnect_event.clear()
@@ -257,7 +266,9 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
         finally:
             self._close_socket(socket, poller)
 
-    def _connect_with_retry(self, initial_cause: Exception) -> tuple[Optional[zmq.Socket], Optional[zmq.Poller]]:
+    def _connect_with_retry(
+        self, initial_cause: Exception
+    ) -> tuple[Optional[zmq.Socket], Optional[zmq.Poller]]:
         attempt = 0
         delay = self.retry_initial_delay
         start_time = time.monotonic()
@@ -340,9 +351,14 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
                 continue
 
             incoming = socket.recv_json()
-            if incoming.get("kind") == "response" and incoming.get("request_id") == request_id:
+            if (
+                incoming.get("kind") == "response"
+                and incoming.get("request_id") == request_id
+            ):
                 if not incoming.get("ok", False):
-                    raise RuntimeError(incoming.get("error", f"Supervisor {op} request failed"))
+                    raise RuntimeError(
+                        incoming.get("error", f"Supervisor {op} request failed")
+                    )
                 return incoming
 
             self._handle_envelope(incoming)
@@ -390,7 +406,9 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
             try:
                 handler(message)
             except Exception:
-                logger.exception("Supervisor ZeroMQ delivery handler failed for topic %s", topic)
+                logger.exception(
+                    "Supervisor ZeroMQ delivery handler failed for topic %s", topic
+                )
 
     def _send_request(
         self,
@@ -409,14 +427,20 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
         with self._pending_lock:
             self._pending[request_id] = queue
 
-        self._outbound.put({"kind": "request", "op": op, "request_id": request_id} | payload)
+        self._outbound.put(
+            {"kind": "request", "op": op, "request_id": request_id} | payload
+        )
 
         try:
-            response = queue.get(timeout=(timeout_ms or self.request_timeout_ms) / 1000.0)
+            response = queue.get(
+                timeout=(timeout_ms or self.request_timeout_ms) / 1000.0
+            )
         except Empty as exc:
             if allow_reconnect:
                 self._mark_transport_unhealthy(exc)
-            raise TimeoutError(f"Timed out waiting for supervisor response to {op}") from exc
+            raise TimeoutError(
+                f"Timed out waiting for supervisor response to {op}"
+            ) from exc
         finally:
             with self._pending_lock:
                 self._pending.pop(request_id, None)
@@ -451,7 +475,9 @@ class SupervisorZmqMessagingBackend(MessagingBackend):
         self._close_socket(socket, poller)
         return None, None
 
-    def _close_socket(self, socket: Optional[zmq.Socket], poller: Optional[zmq.Poller]) -> None:
+    def _close_socket(
+        self, socket: Optional[zmq.Socket], poller: Optional[zmq.Poller]
+    ) -> None:
         if socket is None:
             return
 

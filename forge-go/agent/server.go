@@ -19,6 +19,7 @@ import (
 	"github.com/rustic-ai/forge/forge-go/control"
 	"github.com/rustic-ai/forge/forge-go/embed"
 	"github.com/rustic-ai/forge/forge-go/filesystem"
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/messaging"
 	"github.com/rustic-ai/forge/forge-go/protocol"
@@ -269,13 +270,13 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 	}()
 
 	fsRoot := strings.TrimSpace(cfg.DataDir)
-	homeDir, _ := os.UserHomeDir()
-	switch {
-	case fsRoot == "":
-		fsRoot = filepath.Join(homeDir, ".forge", "data")
-	case fsRoot == "~":
+	if fsRoot == "" {
+		fsRoot = forgepath.Resolve("data")
+	} else if fsRoot == "~" {
+		homeDir, _ := os.UserHomeDir()
 		fsRoot = homeDir
-	case strings.HasPrefix(fsRoot, "~/"):
+	} else if strings.HasPrefix(fsRoot, "~/") {
+		homeDir, _ := os.UserHomeDir()
 		fsRoot = filepath.Join(homeDir, fsRoot[2:])
 	}
 	fsBasePath := filepath.Join(fsRoot, "workspaces")

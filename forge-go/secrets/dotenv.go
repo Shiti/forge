@@ -4,8 +4,9 @@ import (
 	"bufio"
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
+
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 )
 
 // DotEnvSecretProvider resolves secrets from a dotenv-style file.
@@ -16,10 +17,7 @@ type DotEnvSecretProvider struct {
 
 func NewDotEnvSecretProvider(path string) *DotEnvSecretProvider {
 	if strings.TrimSpace(path) == "" {
-		home, _ := os.UserHomeDir()
-		if home != "" {
-			path = filepath.Join(home, ".forge", "secrets", ".env")
-		}
+		path = forgepath.Resolve("secrets/.env")
 	}
 	return &DotEnvSecretProvider{Path: path}
 }

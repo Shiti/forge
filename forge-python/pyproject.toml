@@ -1,6 +1,6 @@
 [project]
 name = "rusticai-forge"
-version = "0.2.2"
+version = "0.2.4"
 description = "Python agent wrapper and execution engine for Forge"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -10,7 +10,7 @@ dependencies = [
     "nats-py>=2.9.0,<3.0.0",
     "pyzmq>=26.0.0,<27.0.0",
     # DO NOT CHANGE THESE TO LOCAL FILE PATHS. Always use package references.
-    "rusticai-core>=1.1.0,<2.0.0",
+    "rusticai-core>=1.2.0,<2.0.0",
     "rusticai-redis>=1.1.0,<2.0.0",
     "psycopg[binary]>=3.3.3,<4.0.0",
     "httpx>=0.28.1,<1.0.0",

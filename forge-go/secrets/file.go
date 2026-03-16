@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 )
 
 // FileSecretProvider resolves secrets by reading files from a directory.
@@ -15,10 +17,7 @@ type FileSecretProvider struct {
 
 func NewFileSecretProvider(baseDir string) *FileSecretProvider {
 	if baseDir == "" {
-		home, _ := os.UserHomeDir()
-		if home != "" {
-			baseDir = filepath.Join(home, ".forge", "secrets")
-		}
+		baseDir = forgepath.Resolve("secrets")
 	}
 	return &FileSecretProvider{
 		BaseDir: baseDir,

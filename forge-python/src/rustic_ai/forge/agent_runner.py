@@ -204,10 +204,14 @@ def _load_backend_config(client_props: dict, client_type_str: str) -> dict:
         raw_backend_config = client_props["backend_config"]
     else:
         raw_backend_config = {
-            key: value for key, value in client_props.items() if key != "organization_id"
+            key: value
+            for key, value in client_props.items()
+            if key != "organization_id"
         }
     if not isinstance(raw_backend_config, dict):
-        raise ValueError("FORGE_CLIENT_PROPERTIES_JSON backend_config must be a JSON object.")
+        raise ValueError(
+            "FORGE_CLIENT_PROPERTIES_JSON backend_config must be a JSON object."
+        )
 
     backend_config = dict(raw_backend_config)
 
@@ -216,7 +220,9 @@ def _load_backend_config(client_props: dict, client_type_str: str) -> dict:
         if raw_supervisor_config:
             supervisor_config = json.loads(raw_supervisor_config)
             if not isinstance(supervisor_config, dict):
-                raise ValueError(f"{SUPERVISOR_ZMQ_CONFIG_ENV} must decode to a JSON object.")
+                raise ValueError(
+                    f"{SUPERVISOR_ZMQ_CONFIG_ENV} must decode to a JSON object."
+                )
             backend_config = supervisor_config | backend_config
 
         endpoint = os.getenv(SUPERVISOR_ZMQ_ENDPOINT_ENV, "")
@@ -248,7 +254,9 @@ def main():
         client_module_str = os.getenv("FORGE_CLIENT_MODULE", "")
         client_props = json.loads(os.getenv("FORGE_CLIENT_PROPERTIES_JSON", "{}"))
         if not isinstance(client_props, dict):
-            raise ValueError("FORGE_CLIENT_PROPERTIES_JSON must decode to a JSON object.")
+            raise ValueError(
+                "FORGE_CLIENT_PROPERTIES_JSON must decode to a JSON object."
+            )
 
         backend_config = _load_backend_config(client_props, client_type_str)
 

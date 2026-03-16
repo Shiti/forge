@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/registry"
 	"github.com/rustic-ai/forge/forge-go/secrets"
@@ -129,10 +129,7 @@ func BuildAgentEnv(
 
 	uvCacheDir := os.Getenv("FORGE_UV_CACHE_DIR")
 	if uvCacheDir == "" {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			uvCacheDir = filepath.Join(home, ".forge", "uv_cache")
-		}
+		uvCacheDir = forgepath.Resolve("uv_cache")
 	}
 	if uvCacheDir != "" {
 		envMap["UV_CACHE_DIR"] = uvCacheDir

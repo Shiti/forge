@@ -5,27 +5,28 @@ import (
 	"os"
 
 	"github.com/rustic-ai/forge/forge-go/agent"
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 	"github.com/rustic-ai/forge/forge-go/helper/logging"
 	"github.com/spf13/cobra"
 )
 
 var (
-	serverDB               string
-	serverRedis            string
-	serverNATS             string
-	serverEmbeddedRedis    string
-	serverListen           string
-	serverManagerAPIBase   string
-	serverDataDir          string
-	serverDependencyConfig string
-	serverWithClient       bool
-	serverClientNodeID     string
-	serverClientMetrics    string
-	serverClientCPUs       int
-	serverClientMemory     int
-	serverClientGPUs       int
-	serverClientSupervisor string
-	serverClientTransport  string
+	serverDB                  string
+	serverRedis               string
+	serverNATS                string
+	serverEmbeddedRedis       string
+	serverListen              string
+	serverManagerAPIBase      string
+	serverDataDir             string
+	serverDependencyConfig    string
+	serverWithClient          bool
+	serverClientNodeID        string
+	serverClientMetrics       string
+	serverClientCPUs          int
+	serverClientMemory        int
+	serverClientGPUs          int
+	serverClientSupervisor    string
+	serverClientTransport     string
 	serverClientAttachTree    bool
 	serverClientZMQBridgeMode string
 	serverBackend             string
@@ -33,13 +34,13 @@ var (
 )
 
 func init() {
-	ServerCmd.Flags().StringVar(&serverDB, "db", "sqlite://~/.forge/data/forge.db", "Database DSN")
+	ServerCmd.Flags().StringVar(&serverDB, "db", "", "Database DSN (default: sqlite://<forge-home>/data/forge.db)")
 	ServerCmd.Flags().StringVar(&serverRedis, "redis", "", "Redis URL (default: embedded miniredis)")
 	ServerCmd.Flags().StringVar(&serverNATS, "nats", "", "NATS URL for data-plane messaging (e.g. nats://localhost:4222); omit to use Redis")
 	ServerCmd.Flags().StringVar(&serverEmbeddedRedis, "embedded-redis-addr", "127.0.0.1:6379", "Bind address for embedded Redis when --redis is not set")
 	ServerCmd.Flags().StringVar(&serverListen, "listen", ":9090", "HTTP server bind address")
 	ServerCmd.Flags().StringVar(&serverManagerAPIBase, "manager-api-base-url", "", "Externally reachable Forge manager API base URL (e.g. http://forge.example.com:9090)")
-	ServerCmd.Flags().StringVar(&serverDataDir, "data-dir", "~/.forge/data", "Base path for central file storage")
+	ServerCmd.Flags().StringVar(&serverDataDir, "data-dir", "", "Base path for central file storage (default: <forge-home>/data)")
 	ServerCmd.Flags().StringVar(&serverDependencyConfig, "dependency-config", "./conf/agent-dependencies.yaml", "Path to dependency map config")
 	ServerCmd.Flags().BoolVar(&serverWithClient, "with-client", false, "Start an in-process Forge client/node")
 	ServerCmd.Flags().StringVar(&serverClientNodeID, "client-node-id", "", "Node ID for in-process client (default: hostname)")
@@ -66,8 +67,17 @@ var ServerCmd = &cobra.Command{
 		l := logging.NewLogger(out, logLevel)
 		logging.SetGlobalLogger(l)
 
+		db := serverDB
+		if db == "" {
+			db = "sqlite://" + forgepath.Resolve("data/forge.db")
+		}
+		dataDir := serverDataDir
+		if dataDir == "" {
+			dataDir = forgepath.Resolve("data")
+		}
+
 		cfg := &agent.ServerConfig{
-			DatabaseURL:             serverDB,
+			DatabaseURL:             db,
 			RedisURL:                serverRedis,
 			NATSUrl:                 serverNATS,
 			Backend:                 serverBackend,
@@ -75,7 +85,7 @@ var ServerCmd = &cobra.Command{
 			EmbeddedNATSAddr:        serverEmbeddedNATSAddr,
 			ListenAddress:           serverListen,
 			ManagerAPIBaseURL:       serverManagerAPIBase,
-			DataDir:                 serverDataDir,
+			DataDir:                 dataDir,
 			DependencyConfig:        serverDependencyConfig,
 			WithClient:              serverWithClient,
 			ClientNodeID:            serverClientNodeID,

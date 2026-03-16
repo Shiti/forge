@@ -131,7 +131,7 @@ func newLocalUIState() *localUIState {
 			},
 		},
 		guildQuota: localQuota{
-			limit: 10,
+			limit: 25,
 		},
 		orgQuota: localQuota{
 			limit: 2,

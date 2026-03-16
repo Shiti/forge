@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/rustic-ai/forge/forge-go/agent"
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 	"github.com/rustic-ai/forge/forge-go/helper/logging"
 	"github.com/spf13/cobra"
 )
@@ -28,7 +29,7 @@ func init() {
 	ClientCmd.Flags().StringVar(&clientServerURL, "server", "http://localhost:9090", "Forge server URL for registration")
 	ClientCmd.Flags().StringVar(&clientRedisURL, "redis", "", "Redis URL (must point to identical Redis used by server)")
 	ClientCmd.Flags().StringVar(&clientNATSUrl, "nats", "", "NATS URL for data-plane messaging (must match server --nats flag)")
-	ClientCmd.Flags().StringVar(&clientDataDir, "data-dir", "~/.forge/data", "Base path for local client runtime data")
+	ClientCmd.Flags().StringVar(&clientDataDir, "data-dir", "", "Base path for local client runtime data (default: <forge-home>/data)")
 	ClientCmd.Flags().IntVar(&clientCPUs, "cpus", 0, "Override detected CPU count")
 	ClientCmd.Flags().IntVar(&clientMemory, "memory", 0, "Override detected memory capacity in MB")
 	ClientCmd.Flags().IntVar(&clientGPUs, "gpus", 0, "Override detected GPU count")
@@ -59,11 +60,16 @@ var ClientCmd = &cobra.Command{
 			clientNodeID = hostname
 		}
 
+		dataDir := clientDataDir
+		if dataDir == "" {
+			dataDir = forgepath.Resolve("data")
+		}
+
 		cfg := &agent.ClientConfig{
 			ServerURL:         clientServerURL,
 			RedisURL:          clientRedisURL,
 			NATSUrl:           clientNATSUrl,
-			DataDir:           clientDataDir,
+			DataDir:           dataDir,
 			CPUs:              clientCPUs,
 			Memory:            clientMemory,
 			GPUs:              clientGPUs,

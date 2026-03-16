@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/rustic-ai/forge/forge-go/filesystem"
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 	"github.com/rustic-ai/forge/forge-go/messaging"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/registry"
@@ -259,18 +260,15 @@ func processWorkDirEnv(workDir string) []string {
 
 func resolveProcessWorkDirBase(dataDir string) string {
 	root := strings.TrimSpace(dataDir)
-	homeDir, _ := os.UserHomeDir()
 
 	switch {
 	case root == "":
-		if homeDir != "" {
-			root = filepath.Join(homeDir, ".forge", "data")
-		} else {
-			root = filepath.Join(os.TempDir(), "forge-data")
-		}
+		root = forgepath.Resolve("data")
 	case root == "~":
+		homeDir, _ := os.UserHomeDir()
 		root = homeDir
 	case strings.HasPrefix(root, "~/"):
+		homeDir, _ := os.UserHomeDir()
 		root = filepath.Join(homeDir, root[2:])
 	}
 

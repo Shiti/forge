@@ -109,7 +109,10 @@ class FakeSupervisorBridge:
             return {"kind": "response", "op": op, "request_id": request_id, "ok": True}
 
         if op == "get_messages":
-            messages = [message.to_json() for message in self.messages_by_topic.get(request["topic"], [])]
+            messages = [
+                message.to_json()
+                for message in self.messages_by_topic.get(request["topic"], [])
+            ]
             return {
                 "kind": "response",
                 "op": op,
@@ -184,7 +187,9 @@ def bridge() -> FakeSupervisorBridge:
         fake.close()
 
 
-def test_supervisor_zmq_backend_round_trip_and_delivery(bridge: FakeSupervisorBridge) -> None:
+def test_supervisor_zmq_backend_round_trip_and_delivery(
+    bridge: FakeSupervisorBridge,
+) -> None:
     backend = SupervisorZmqMessagingBackend(
         endpoint=bridge.endpoint,
         request_timeout_ms=1_000,
@@ -209,13 +214,18 @@ def test_supervisor_zmq_backend_round_trip_and_delivery(bridge: FakeSupervisorBr
         since = backend.get_messages_for_topic_since("guild-1:alpha", message_1.id)
         assert [message.id for message in since] == [message_2.id]
 
-        next_message = backend.get_next_message_for_topic_since("guild-1:alpha", message_1.id)
+        next_message = backend.get_next_message_for_topic_since(
+            "guild-1:alpha", message_1.id
+        )
         assert next_message is not None
         assert next_message.id == message_2.id
 
         by_id = backend.get_messages_by_id("guild-1", [message_2.id, message_1.id])
         assert [message.id for message in by_id] == [message_2.id, message_1.id]
-        assert bridge.requests_for("get_by_id")[-1]["msg_ids"] == [message_2.id, message_1.id]
+        assert bridge.requests_for("get_by_id")[-1]["msg_ids"] == [
+            message_2.id,
+            message_1.id,
+        ]
 
         assert backend.load_subscribers("guild-1") == {}
         assert backend.supports_subscription() is True

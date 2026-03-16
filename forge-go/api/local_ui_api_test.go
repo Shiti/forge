@@ -36,7 +36,7 @@ func TestBuildRouter_LocalIdentityAndQuotaRoutes(t *testing.T) {
 	var quota map[string]interface{}
 	require.NoError(t, json.Unmarshal(rrQuota.Body.Bytes(), &quota))
 	require.Equal(t, true, quota["allowed"])
-	require.Equal(t, float64(10), quota["limit"])
+	require.Equal(t, float64(25), quota["limit"])
 }
 
 func TestBuildRouter_LocalIdentityUsersSearchEmptyIDsReturnsEmptyList(t *testing.T) {
