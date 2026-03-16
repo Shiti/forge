@@ -196,7 +196,7 @@ func (b *NATSBackend) GetMessagesForTopic(_ context.Context, namespace, topic st
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pull subscription for %q: %w", nsTopic, err)
 	}
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	natsMsgs, err := sub.Fetch(int(total), nats.MaxWait(10*time.Second))
 	if err != nil {
@@ -237,7 +237,7 @@ func (b *NATSBackend) GetMessagesSince(_ context.Context, namespace, topic strin
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pull subscription for %q: %w", nsTopic, err)
 	}
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	const batchSize = 256
 	var messages []protocol.Message

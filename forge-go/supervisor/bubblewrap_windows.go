@@ -6,18 +6,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/redis/go-redis/v9"
-
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/registry"
 )
 
-type BubblewrapSupervisor struct {
-	rdb *redis.Client
-}
+type BubblewrapSupervisor struct{}
 
-func NewBubblewrapSupervisor(rdb *redis.Client) *BubblewrapSupervisor {
-	return &BubblewrapSupervisor{rdb: rdb}
+func NewBubblewrapSupervisor(statusStore AgentStatusStore) *BubblewrapSupervisor {
+	return &BubblewrapSupervisor{}
 }
 
 func (p *BubblewrapSupervisor) Available() bool {

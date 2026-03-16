@@ -41,7 +41,7 @@ func TestNATSPublishAndRetrieveMessages(t *testing.T) {
 
 	nc, err := nats.Connect(s.ClientURL())
 	require.NoError(t, err)
-	defer nc.Drain()
+	defer func() { _ = nc.Drain() }()
 
 	backend, err := messaging.NewNATSBackend(nc)
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestNATSGetMessagesSince(t *testing.T) {
 
 	nc, err := nats.Connect(s.ClientURL())
 	require.NoError(t, err)
-	defer nc.Drain()
+	defer func() { _ = nc.Drain() }()
 
 	backend, err := messaging.NewNATSBackend(nc)
 	require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestNATSGetMessagesByID(t *testing.T) {
 
 	nc, err := nats.Connect(s.ClientURL())
 	require.NoError(t, err)
-	defer nc.Drain()
+	defer func() { _ = nc.Drain() }()
 
 	backend, err := messaging.NewNATSBackend(nc)
 	require.NoError(t, err)
