@@ -44,8 +44,6 @@ def _mock_missing_module(name):
 # Mock out fake modules referenced in E2E test YAMLs so Pydantic class validation passes
 _mock_missing_module("helpers")
 _mock_missing_module("helpers.scatter_gather_agents")
-_mock_missing_module("rustic_ai.forge.messaging")
-_mock_missing_module("rustic_ai.forge.messaging.redis_backend")
 _mock_missing_module("rustic_ai.llm_agent")
 _mock_missing_module("rustic_ai.llm_agent.react")
 
