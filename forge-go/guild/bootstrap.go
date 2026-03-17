@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"log/slog"
 
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/helper/idgen"
 	"github.com/rustic-ai/forge/forge-go/protocol"
@@ -28,6 +30,7 @@ func Bootstrap(ctx context.Context, db store.Store, pusher protocol.ControlPushe
 	guildModel, agentModels := buildModels(spec, orgID)
 	normalizeRuntimeSpecIDs(spec, guildModel.ID)
 	normalizeAgentModelIDs(agentModels, guildModel.ID)
+	applyStateManagerConfig(spec, orgID, guildModel.ID)
 
 	if err := db.CreateGuildWithAgents(guildModel, agentModels); err != nil {
 		return nil, fmt.Errorf("failed to persist guild and agents: %w", err)
@@ -189,6 +192,27 @@ func applyDefaults(spec *protocol.GuildSpec) {
 			"backend_class":  backendClass,
 			"backend_config": backendConfig,
 		}
+	}
+
+	// State manager default (env var override supported)
+	if spec.Properties["state_manager"] == nil {
+		if sm := os.Getenv("RUSTIC_AI_STATE_MANAGER"); sm != "" {
+			spec.Properties["state_manager"] = sm
+		}
+	}
+}
+
+func applyStateManagerConfig(spec *protocol.GuildSpec, orgID, guildID string) {
+	sm, _ := spec.Properties["state_manager"].(string)
+	if !strings.Contains(sm, "DiskCacheStateManager") {
+		return
+	}
+	if spec.Properties["state_manager_config"] != nil {
+		return
+	}
+	cacheDir := filepath.Join(forgepath.ForgeHome(), "state_stores", orgID, guildID)
+	spec.Properties["state_manager_config"] = map[string]interface{}{
+		"cache_dir": cacheDir,
 	}
 }
 

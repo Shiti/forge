@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,15 @@ import (
 )
 
 const defaultNATSMessageTTL = 3600 * time.Second
+
+// longRetentionTTL is used for topics that need extended message history (e.g. user notifications).
+const longRetentionTTL = 60 * 24 * time.Hour // 60 days
+
+// longRetentionTopics lists topic substrings that should use extended retention.
+var longRetentionTopics = []string{
+	"user_notifications:",
+	"user_message_broadcast",
+}
 
 // NATSConfig holds configuration for the NATS backend.
 type NATSConfig struct {
@@ -73,6 +83,17 @@ func NewNATSBackendWithConfig(nc *nats.Conn, config NATSConfig) (*NATSBackend, e
 	}, nil
 }
 
+// ttlForTopic returns the appropriate TTL for a namespaced topic.
+// Topics matching longRetentionTopics get extended retention; all others use the default.
+func (b *NATSBackend) ttlForTopic(nsTopic string) time.Duration {
+	for _, pattern := range longRetentionTopics {
+		if strings.Contains(nsTopic, pattern) {
+			return longRetentionTTL
+		}
+	}
+	return b.config.MessageTTL
+}
+
 // ensureStream lazily creates (or verifies) the JetStream stream for a namespaced topic.
 func (b *NATSBackend) ensureStream(nsTopic string) error {
 	b.mu.Lock()
@@ -85,7 +106,7 @@ func (b *NATSBackend) ensureStream(nsTopic string) error {
 	cfg := &nats.StreamConfig{
 		Name:     streamName(nsTopic),
 		Subjects: []string{jsSubject(nsTopic)},
-		MaxAge:   b.config.MessageTTL,
+		MaxAge:   b.ttlForTopic(nsTopic),
 	}
 
 	_, err := b.js.AddStream(cfg)

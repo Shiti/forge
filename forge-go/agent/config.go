@@ -25,6 +25,7 @@ type ServerConfig struct {
 	RaftBindAddr            string
 	GossipBindAddr          string
 	GossipJoinPeers         []string
+	StateStore              string
 }
 
 type ClientConfig struct {

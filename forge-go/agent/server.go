@@ -163,6 +163,11 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		l.Info("Using Redis messaging + control plane")
 	}
 
+	if strings.EqualFold(strings.TrimSpace(cfg.StateStore), "diskcache") {
+		_ = os.Setenv("RUSTIC_AI_STATE_MANAGER",
+			"rustic_ai.core.state.manager.diskcache_state_manager.DiskCacheStateManager")
+	}
+
 	var wg sync.WaitGroup
 	queueListener := control.NewControlQueueListener(controlPlane)
 

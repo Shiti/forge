@@ -3,6 +3,7 @@ package guild
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rustic-ai/forge/forge-go/guild/store"
@@ -454,4 +455,78 @@ func TestApplyFilesystemGlobalRoot_RejectsObjectStoreBucketMismatch(t *testing.T
 
 	err := ApplyFilesystemGlobalRoot(spec, "s3://forge-bucket/root")
 	require.ErrorContains(t, err, "does not match Forge global root bucket")
+}
+
+func TestApplyDefaults_InjectsStateManagerFromEnv(t *testing.T) {
+	t.Setenv("RUSTIC_AI_STATE_MANAGER", "rustic_ai.core.state.manager.diskcache_state_manager.DiskCacheStateManager")
+
+	spec := &protocol.GuildSpec{
+		ID:   "g-sm",
+		Name: "Guild",
+	}
+
+	applyDefaults(spec)
+
+	require.Equal(t, "rustic_ai.core.state.manager.diskcache_state_manager.DiskCacheStateManager", spec.Properties["state_manager"])
+}
+
+func TestApplyDefaults_DoesNotOverrideExistingStateManager(t *testing.T) {
+	t.Setenv("RUSTIC_AI_STATE_MANAGER", "rustic_ai.core.state.manager.diskcache_state_manager.DiskCacheStateManager")
+
+	spec := &protocol.GuildSpec{
+		ID:   "g-sm",
+		Name: "Guild",
+		Properties: map[string]interface{}{
+			"state_manager": "my.custom.StateManager",
+		},
+	}
+
+	applyDefaults(spec)
+
+	require.Equal(t, "my.custom.StateManager", spec.Properties["state_manager"])
+}
+
+func TestApplyStateManagerConfig_InjectsCacheDir(t *testing.T) {
+	spec := &protocol.GuildSpec{
+		Properties: map[string]interface{}{
+			"state_manager": "rustic_ai.core.state.manager.diskcache_state_manager.DiskCacheStateManager",
+		},
+	}
+
+	applyStateManagerConfig(spec, "org-1", "guild-42")
+
+	cfg, ok := spec.Properties["state_manager_config"].(map[string]interface{})
+	require.True(t, ok, "state_manager_config should be a map")
+	cacheDir, ok := cfg["cache_dir"].(string)
+	require.True(t, ok, "cache_dir should be a string")
+	require.True(t, strings.Contains(cacheDir, filepath.Join("state_stores", "org-1", "guild-42")),
+		"cache_dir should contain state_stores/org-1/guild-42, got %s", cacheDir)
+}
+
+func TestApplyStateManagerConfig_SkipsNonDiskCache(t *testing.T) {
+	spec := &protocol.GuildSpec{
+		Properties: map[string]interface{}{
+			"state_manager": "some.other.StateManager",
+		},
+	}
+
+	applyStateManagerConfig(spec, "org-1", "guild-42")
+
+	require.Nil(t, spec.Properties["state_manager_config"])
+}
+
+func TestApplyStateManagerConfig_DoesNotOverrideExistingConfig(t *testing.T) {
+	spec := &protocol.GuildSpec{
+		Properties: map[string]interface{}{
+			"state_manager": "rustic_ai.core.state.manager.diskcache_state_manager.DiskCacheStateManager",
+			"state_manager_config": map[string]interface{}{
+				"cache_dir": "/custom/path",
+			},
+		},
+	}
+
+	applyStateManagerConfig(spec, "org-1", "guild-42")
+
+	cfg := spec.Properties["state_manager_config"].(map[string]interface{})
+	require.Equal(t, "/custom/path", cfg["cache_dir"])
 }

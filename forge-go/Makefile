@@ -11,10 +11,10 @@ VERSION ?= $(shell git describe --tags --always --dirty)
 COMMIT ?= $(shell git rev-parse --short HEAD)
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-LDFLAGS := -ldflags "-X github.com/rustic-ai/forge/forge-go/version.Version=$(VERSION) -X github.com/rustic-ai/forge/forge-go/version.GitCommit=$(COMMIT) -X github.com/rustic-ai/forge/forge-go/version.BuildDate=$(DATE)"
+LDFLAGS := -ldflags "-s -w -X github.com/rustic-ai/forge/forge-go/version.Version=$(VERSION) -X github.com/rustic-ai/forge/forge-go/version.GitCommit=$(COMMIT) -X github.com/rustic-ai/forge/forge-go/version.BuildDate=$(DATE)"
 
 build:
-	go build $(LDFLAGS) -o bin/forge main.go
+	go build -trimpath $(LDFLAGS) -o bin/forge main.go
 
 test:
 	go test -v ./...

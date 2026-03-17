@@ -148,6 +148,13 @@ func BuildAgentEnv(
 		envMap["NATS_URL"] = val
 	}
 
+	// Forward state manager and FORGE_HOME env vars so spawned agents inherit state store config.
+	for _, key := range []string{"RUSTIC_AI_STATE_MANAGER", "FORGE_HOME"} {
+		if val := os.Getenv(key); val != "" {
+			envMap[key] = val
+		}
+	}
+
 	var result []string
 	for k, v := range envMap {
 		result = append(result, fmt.Sprintf("%s=%s", k, v))

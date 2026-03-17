@@ -33,6 +33,7 @@ var (
 	serverClientZMQBridgeMode string
 	serverBackend             string
 	serverEmbeddedNATSAddr    string
+	serverStateStore          string
 )
 
 func init() {
@@ -56,6 +57,7 @@ func init() {
 	ServerCmd.Flags().StringVar(&serverClientZMQBridgeMode, "client-zmq-bridge-mode", "ipc", `ZMQ bridge transport for non-process supervisors: "ipc" or "tcp"`)
 	ServerCmd.Flags().StringVar(&serverBackend, "backend", "redis", `Messaging backend: "redis" or "nats"`)
 	ServerCmd.Flags().StringVar(&serverEmbeddedNATSAddr, "embedded-nats-addr", "", "Bind address for embedded NATS (default: ephemeral port)")
+	ServerCmd.Flags().StringVar(&serverStateStore, "state-store", "", `State store backend: "diskcache" (default: in-memory)`)
 
 	RootCmd.AddCommand(ServerCmd)
 }
@@ -99,6 +101,7 @@ var ServerCmd = &cobra.Command{
 			ClientDefaultTransport:  serverClientTransport,
 			ClientZMQBridgeMode:     serverClientZMQBridgeMode,
 			ClientAttachProcessTree: serverClientAttachTree,
+			StateStore:              serverStateStore,
 		}
 
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

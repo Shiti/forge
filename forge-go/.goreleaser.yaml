@@ -15,7 +15,10 @@ builds:
     goarch:
       - amd64
       - arm64
+    flags:
+      - -trimpath
     ldflags:
+      - -s -w
       - -X github.com/rustic-ai/forge/forge-go/version.Version={{.Version}}
       - -X github.com/rustic-ai/forge/forge-go/version.GitCommit={{.Commit}}
       - -X github.com/rustic-ai/forge/forge-go/version.BuildDate={{.Date}}
