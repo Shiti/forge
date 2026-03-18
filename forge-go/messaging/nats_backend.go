@@ -213,6 +213,7 @@ func (b *NATSBackend) GetMessagesForTopic(_ context.Context, namespace, topic st
 		"", // ephemeral consumer
 		nats.DeliverAll(),
 		nats.BindStream(streamName(nsTopic)),
+		nats.InactiveThreshold(5*time.Second),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pull subscription for %q: %w", nsTopic, err)
@@ -254,6 +255,7 @@ func (b *NATSBackend) GetMessagesSince(_ context.Context, namespace, topic strin
 		"", // ephemeral consumer
 		nats.StartTime(startTime),
 		nats.BindStream(streamName(nsTopic)),
+		nats.InactiveThreshold(5*time.Second),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pull subscription for %q: %w", nsTopic, err)

@@ -129,6 +129,43 @@ func TestNATSControlTransport_MessageDeliveredExactlyOnce(t *testing.T) {
 	assert.Nil(t, got2, "message must not be re-delivered after being consumed (WorkQueuePolicy regression)")
 }
 
+// TestNATSControlTransport_PopSurvivesReconnect verifies that closing and
+// recreating a transport for the same queue does not produce a "filtered consumer
+// not unique on workqueue stream" error. Before the fix (ephemeral consumers),
+// a leftover server-side consumer would conflict with a new one.
+func TestNATSControlTransport_PopSurvivesReconnect(t *testing.T) {
+	nc := newTestNATSConn(t)
+
+	// First transport — push a message and pop it (creates the durable consumer).
+	t1, err := NewNATSControlTransport(nc)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	require.NoError(t, t1.Push(ctx, "reconnect:queue", []byte("msg1")))
+	got, err := t1.Pop(ctx, "reconnect:queue", 2*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("msg1"), got)
+
+	// Close the first transport (simulates process restart).
+	t1.Close()
+
+	// Second transport — must reuse the durable consumer without error.
+	t2, err := NewNATSControlTransport(nc)
+	require.NoError(t, err)
+
+	require.NoError(t, t2.Push(ctx, "reconnect:queue", []byte("msg2")))
+	got2, err := t2.Pop(ctx, "reconnect:queue", 2*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("msg2"), got2)
+
+	// Queue should be empty.
+	empty, err := t2.Pop(ctx, "reconnect:queue", 200*time.Millisecond)
+	require.NoError(t, err)
+	assert.Nil(t, empty)
+
+	t2.Close()
+}
+
 // TestNATSControlTransport_AllMessagesDeliveredExactlyOnce verifies that every
 // pushed message is received exactly once and the queue is empty afterwards.
 // (Strict FIFO is not guaranteed across sequential ephemeral pull consumers.)

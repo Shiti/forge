@@ -249,15 +249,20 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 		}
 	}
 
+	orgID := h.resolveOrganizationForSpawn(req, guildOrgID)
+
 	envVars, err := envvars.BuildAgentEnv(ctx, guildSpec, &req.AgentSpec, entry, h.secrets)
 	if err != nil {
 		slog.Error("handleSpawn: env var build failed", "agent_id", req.AgentSpec.ID, "error", err)
 		h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to build environment variables: %v", err))
 		return
 	}
-	slog.Info("handleSpawn: env vars built OK", "agent_id", req.AgentSpec.ID, "env_count", len(envVars))
 
-	orgID := h.resolveOrganizationForSpawn(req, guildOrgID)
+	// Inject organization_id into FORGE_CLIENT_PROPERTIES_JSON so the Python
+	// agent_runner can extract it (client_props.pop("organization_id")).
+	envVars = injectClientProperty(envVars, "organization_id", orgID)
+
+	slog.Info("handleSpawn: env vars built OK", "agent_id", req.AgentSpec.ID, "env_count", len(envVars))
 	sup := h.supervisorForOrganization(orgID)
 	if sup == nil {
 		h.sendError(ctx, req.RequestID, "no supervisor available for organization")
@@ -348,6 +353,31 @@ func organizationFromValue(v interface{}) string {
 
 func agentOrgKey(guildID, agentID string) string {
 	return guildID + "::" + agentID
+}
+
+// injectClientProperty patches FORGE_CLIENT_PROPERTIES_JSON in an env slice
+// to include an additional key-value pair. The Python agent_runner reads client
+// properties from this JSON blob, so this is the channel for passing metadata
+// like organization_id to spawned agent processes.
+func injectClientProperty(envVars []string, key, value string) []string {
+	const prefix = "FORGE_CLIENT_PROPERTIES_JSON="
+	for i, entry := range envVars {
+		if strings.HasPrefix(entry, prefix) {
+			raw := entry[len(prefix):]
+			var props map[string]interface{}
+			if err := json.Unmarshal([]byte(raw), &props); err != nil {
+				props = make(map[string]interface{})
+			}
+			props[key] = value
+			if patched, err := json.Marshal(props); err == nil {
+				envVars[i] = prefix + string(patched)
+			}
+			return envVars
+		}
+	}
+	// No existing entry — create one.
+	blob, _ := json.Marshal(map[string]interface{}{key: value})
+	return append(envVars, prefix+string(blob))
 }
 
 func (h *ControlQueueHandler) resolveOrganizationForSpawn(req *protocol.SpawnRequest, guildOrgID string) string {

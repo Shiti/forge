@@ -121,6 +121,7 @@ class _NATSControlClient:
                 ack_policy=nats.js.api.AckPolicy.NONE,
                 deliver_policy=nats.js.api.DeliverPolicy.ALL,
                 max_deliver=1,
+                inactive_threshold=10.0,
             )
             try:
                 sub = await self._js.pull_subscribe(

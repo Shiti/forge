@@ -138,9 +138,10 @@ func (t *NATSControlTransport) getOrCreateSub(queueKey string) (*nats.Subscripti
 		return sub, nil
 	}
 
+	consumerName := "ctrl_" + ctrlSanitize(queueKey)
 	sub, err := t.js.PullSubscribe(
 		t.ctrlSubject(queueKey),
-		"",
+		consumerName,
 		nats.BindStream(t.ctrlStreamName(queueKey)),
 	)
 	if err != nil {
@@ -228,6 +229,7 @@ func (t *NATSControlTransport) WaitResponse(ctx context.Context, requestID strin
 		subject,
 		"",
 		nats.BindStream(ctrlResponseStream),
+		nats.InactiveThreshold(5*time.Second),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("control: failed to subscribe for response %q: %w", requestID, err)

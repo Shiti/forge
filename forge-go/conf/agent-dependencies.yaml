@@ -17,13 +17,131 @@ embeddings:
 vectorstore:
   class_name: rustic_ai.chroma.agent_ext.vectorstore.ChromaResolver
   properties: {}
-llm:
-  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
-  properties:
-    model: gpt-4o
 textsplitter:
   class_name: rustic_ai.langchain.agent_ext.text_splitter.recursive_splitter.RecursiveSplitterResolver
   properties:
     conf:
       chunk_size: 4000
       chunk_overlap: 200
+
+# ---------------------------------------------------------------------------
+# LLM Dependencies
+# ---------------------------------------------------------------------------
+
+# --- Local llama.cpp server (OpenAI-compatible, port 55262) ---
+
+llm:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: openai/rustic/qwen3.5-0.8b-starter
+    base_url: http://localhost:55262/v1
+
+llm_local_qwen3_5_0_8b:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: openai/rustic/qwen3.5-0.8b-starter
+    base_url: http://localhost:55262/v1
+
+llm_local_nomic_embed:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: openai/rustic/nomic-embed-default
+    base_url: http://localhost:55262/v1
+
+llm_local_qwen3_5_2b:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: openai/rustic/qwen3.5-2b-balanced
+    base_url: http://localhost:55262/v1
+
+llm_local_qwen3_5_4b:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: openai/rustic/qwen3.5-4b-quality
+    base_url: http://localhost:55262/v1
+
+llm_local_qwen3_4b_text:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: openai/rustic/qwen3-4b-text
+    base_url: http://localhost:55262/v1
+
+llm_local_gemma3_4b:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: openai/rustic/gemma-3-4b-it
+    base_url: http://localhost:55262/v1
+
+# --- OpenAI ---
+# Requires: OPENAI_API_KEY
+
+llm_openai:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: gpt-5.4
+
+# --- Anthropic ---
+# Requires: ANTHROPIC_API_KEY
+
+llm_anthropic_sonnet:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: anthropic/claude-sonnet-4-6-20260301
+
+llm_anthropic_opus:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: anthropic/claude-opus-4-6-20260301
+
+# --- Google Gemini (AI Studio) ---
+# Requires: GEMINI_API_KEY
+
+llm_gemini:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: gemini/gemini-3.1
+
+# --- Google Vertex AI ---
+# Requires: GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION
+
+llm_vertexai:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: vertex_ai/gemini-3.1
+    vertex_project: null
+    vertex_location: null
+
+# --- AWS Bedrock ---
+# Requires: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION_NAME
+
+llm_bedrock:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0
+    custom_llm_provider: bedrock
+
+# --- Azure OpenAI ---
+# Requires: AZURE_API_KEY, AZURE_API_BASE, AZURE_API_VERSION
+
+llm_azure:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: azure/<your-deployment-name>
+    base_url: null
+    api_version: "2024-06-01"
+
+# --- Cohere ---
+# Requires: COHERE_API_KEY
+
+llm_cohere:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: cohere_chat/command-r-plus
+
+# --- Groq ---
+# Requires: GROQ_API_KEY
+
+llm_groq:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  properties:
+    model: groq/llama-3.3-70b-versatile
