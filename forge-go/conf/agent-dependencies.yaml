@@ -23,6 +23,9 @@ textsplitter:
     conf:
       chunk_size: 4000
       chunk_overlap: 200
+kb_backend:
+  class_name: rustic_ai.lancedb.kbindex_backend_lancedb.LanceDBKBIndexBackendResolver
+  properties: {}
 
 # ---------------------------------------------------------------------------
 # LLM Dependencies
