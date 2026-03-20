@@ -24,7 +24,7 @@ textsplitter:
       chunk_size: 4000
       chunk_overlap: 200
 kb_backend:
-  class_name: rustic_ai.lancedb.kbindex_backend_lancedb.LanceDBKBIndexBackendResolver
+  class_name: rustic_ai.core.knowledgebase.kbindex_backend_memory.InMemoryKBIndexBackendResolver
   properties: {}
 
 # ---------------------------------------------------------------------------
