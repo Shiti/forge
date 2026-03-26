@@ -8,6 +8,9 @@ import (
 )
 
 func TestBuildBwrapArgs(t *testing.T) {
+	for _, key := range []string{"FORGE_UV_CACHE_DIR", "UV_CACHE_DIR", "XDG_CACHE_HOME", "XDG_DATA_HOME"} {
+		t.Setenv(key, "")
+	}
 
 	homeDir, _ := os.UserHomeDir()
 	uvToolDir := homeDir + "/.local/share/uv"
