@@ -218,3 +218,62 @@ func TestHandler_SpawnWithoutGuildStore_UsesFallback(t *testing.T) {
 
 	handler.Stop()
 }
+
+func TestHandler_SpawnWithSuppressedResponse_DoesNotReply(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = rdb.Close() }()
+	ctx := context.Background()
+
+	regYaml := "entries:\n" +
+		"  - id: TestAgent\n" +
+		"    class_name: \"test.Agent\"\n" +
+		"    runtime: binary\n" +
+		"    executable: \"/bin/echo\"\n"
+	tmpfile := filepath.Join(t.TempDir(), "reg.yaml")
+	require.NoError(t, os.WriteFile(tmpfile, []byte(regYaml), 0644))
+	reg, err := registry.Load(tmpfile)
+	require.NoError(t, err)
+
+	sec := secrets.NewEnvSecretProvider()
+	cp := NewRedisControlTransport(rdb)
+	sup := supervisor.NewProcessSupervisor(supervisor.NewRedisAgentStatusStore(rdb), supervisor.WithWorkDirBase(t.TempDir()))
+
+	handler := NewControlQueueHandler(cp, reg, sec, sup, nil)
+	require.NoError(t, handler.Start(ctx))
+	defer handler.Stop()
+	time.Sleep(50 * time.Millisecond)
+
+	req := &protocol.SpawnRequest{
+		RequestID:    "req-spawn-no-reply-1",
+		GuildID:      "guild-suppressed",
+		ResponseMode: protocol.SpawnResponseModeNone,
+		AgentSpec: protocol.AgentSpec{
+			ID:        "agent-suppressed",
+			ClassName: "test.Agent",
+		},
+		MessagingConfig: &protocol.MessagingConfig{
+			BackendModule: "rustic_ai.redis.messaging.backend",
+			BackendClass:  "RedisMessagingBackend",
+			BackendConfig: map[string]interface{}{
+				"redis_client": map[string]interface{}{
+					"host": "127.0.0.1",
+					"port": "6379",
+					"db":   0,
+				},
+			},
+		},
+	}
+	wrapper := map[string]interface{}{
+		"command": "spawn",
+		"payload": req,
+	}
+	wb, _ := json.Marshal(wrapper)
+	rdb.LPush(ctx, ControlQueueRequestKey, wb)
+
+	_, err = rdb.BRPop(ctx, 1*time.Second, "forge:control:response:req-spawn-no-reply-1").Result()
+	require.Error(t, err)
+}

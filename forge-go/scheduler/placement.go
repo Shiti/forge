@@ -9,6 +9,7 @@ import (
 type SpawnState string
 
 const (
+	SpawnAccepted     SpawnState = "accepted"
 	SpawnDispatched   SpawnState = "dispatched"
 	SpawnAcknowledged SpawnState = "acknowledged"
 	SpawnRunning      SpawnState = "running"
@@ -20,6 +21,7 @@ type AgentPlacement struct {
 	AgentID      string
 	NodeID       string
 	State        SpawnState
+	AcceptedAt   time.Time
 	DispatchedAt time.Time
 	AckedAt      time.Time
 	Attempts     int
@@ -50,10 +52,39 @@ func (p *PlacementMap) Place(guildID, agentID, nodeID string, payload []byte) {
 		AgentID:      agentID,
 		NodeID:       nodeID,
 		State:        SpawnDispatched,
+		AcceptedAt:   now,
 		DispatchedAt: now,
 		Attempts:     1,
 		PlacedAt:     now,
 		Payload:      payload,
+	}
+}
+
+// MarkAccepted upserts an entry as accepted for background placement.
+func (p *PlacementMap) MarkAccepted(guildID, agentID string, payload []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	now := time.Now()
+	key := guildID + ":" + agentID
+	existing, exists := p.placements[key]
+
+	attempts := 0
+	acceptedAt := now
+	if exists {
+		attempts = existing.Attempts
+		if !existing.AcceptedAt.IsZero() {
+			acceptedAt = existing.AcceptedAt
+		}
+	}
+
+	p.placements[key] = AgentPlacement{
+		GuildID:    guildID,
+		AgentID:    agentID,
+		State:      SpawnAccepted,
+		AcceptedAt: acceptedAt,
+		Attempts:   attempts,
+		Payload:    payload,
 	}
 }
 
@@ -77,6 +108,7 @@ func (p *PlacementMap) MarkDispatched(guildID, agentID, nodeID string, payload [
 		AgentID:      agentID,
 		NodeID:       nodeID,
 		State:        SpawnDispatched,
+		AcceptedAt:   existing.AcceptedAt,
 		DispatchedAt: now,
 		Attempts:     attempts,
 		PlacedAt:     now,
@@ -92,6 +124,9 @@ func (p *PlacementMap) MarkAcknowledged(guildID, agentID string) {
 
 	key := guildID + ":" + agentID
 	if entry, ok := p.placements[key]; ok {
+		if entry.Attempts == 0 {
+			entry.Attempts = 1
+		}
 		entry.State = SpawnAcknowledged
 		entry.AckedAt = time.Now()
 		p.placements[key] = entry
@@ -105,6 +140,9 @@ func (p *PlacementMap) MarkRunning(guildID, agentID string) {
 
 	key := guildID + ":" + agentID
 	if entry, ok := p.placements[key]; ok {
+		if entry.Attempts == 0 {
+			entry.Attempts = 1
+		}
 		entry.State = SpawnRunning
 		p.placements[key] = entry
 	}
@@ -117,12 +155,15 @@ func (p *PlacementMap) MarkFailed(guildID, agentID string) {
 
 	key := guildID + ":" + agentID
 	if entry, ok := p.placements[key]; ok {
+		if entry.Attempts == 0 {
+			entry.Attempts = 1
+		}
 		entry.State = SpawnFailed
 		p.placements[key] = entry
 	}
 }
 
-// IsActivelyTracked returns true if the entry exists and is in Dispatched, Acknowledged, or Running state.
+// IsActivelyTracked returns true if the entry exists and is in Accepted, Dispatched, Acknowledged, or Running state.
 func (p *PlacementMap) IsActivelyTracked(guildID, agentID string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -132,7 +173,21 @@ func (p *PlacementMap) IsActivelyTracked(guildID, agentID string) bool {
 	if !ok {
 		return false
 	}
-	return entry.State == SpawnDispatched || entry.State == SpawnAcknowledged || entry.State == SpawnRunning
+	return entry.State == SpawnAccepted || entry.State == SpawnDispatched || entry.State == SpawnAcknowledged || entry.State == SpawnRunning
+}
+
+// GetAccepted returns entries waiting for background placement.
+func (p *PlacementMap) GetAccepted() []AgentPlacement {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	result := make([]AgentPlacement, 0)
+	for _, entry := range p.placements {
+		if entry.State == SpawnAccepted {
+			result = append(result, entry)
+		}
+	}
+	return result
 }
 
 // GetStaleDispatches returns entries in Dispatched state where DispatchedAt is older than timeout.
@@ -195,6 +250,14 @@ func (p *PlacementMap) Find(guildID, agentID string) (AgentPlacement, bool) {
 	key := guildID + ":" + agentID
 	placement, ok := p.placements[key]
 	return placement, ok
+}
+
+// Put replaces a placement entry.
+func (p *PlacementMap) Put(entry AgentPlacement) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.placements[entry.GuildID+":"+entry.AgentID] = entry
 }
 
 func (p *PlacementMap) AgentsOnNode(nodeID string) []AgentPlacement {

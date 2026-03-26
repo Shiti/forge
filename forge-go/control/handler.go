@@ -186,6 +186,10 @@ func (h *ControlQueueHandler) sendError(ctx context.Context, requestID, detail s
 	}
 }
 
+func shouldSuppressSpawnResponse(req *protocol.SpawnRequest) bool {
+	return req != nil && req.ResponseMode == protocol.SpawnResponseModeNone
+}
+
 // handleSpawn orchestrates booting an agent based on the remote SpawnRequest
 func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.SpawnRequest) {
 	slog.Info("handleSpawn: received spawn request", "agent_id", req.AgentSpec.ID, "class", req.AgentSpec.ClassName, "guild", req.GuildID, "request_id", req.RequestID)
@@ -226,10 +230,12 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 					"state": existing.State,
 				},
 			})
-			_ = h.responder.SendResponse(ctx, req.RequestID, &protocol.SpawnResponse{
-				RequestID: req.RequestID, Success: true,
-				Message: fmt.Sprintf("agent already %s on node %s", existing.State, existing.NodeID),
-			})
+			if !shouldSuppressSpawnResponse(req) {
+				_ = h.responder.SendResponse(ctx, req.RequestID, &protocol.SpawnResponse{
+					RequestID: req.RequestID, Success: true,
+					Message: fmt.Sprintf("agent already %s on node %s", existing.State, existing.NodeID),
+				})
+			}
 			return
 		}
 	}
@@ -251,7 +257,9 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 			"error":  err.Error(),
 			"reason": "registry_lookup_failed",
 		})
-		h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to lookup agent class %s from registry: %v", req.AgentSpec.ClassName, err))
+		if !shouldSuppressSpawnResponse(req) {
+			h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to lookup agent class %s from registry: %v", req.AgentSpec.ClassName, err))
+		}
 		return
 	}
 	slog.Info("handleSpawn: registry lookup OK", "agent_id", req.AgentSpec.ID, "entry_id", entry.ID)
@@ -307,7 +315,9 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 			"error":  err.Error(),
 			"reason": "env_build_failed",
 		})
-		h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to build environment variables: %v", err))
+		if !shouldSuppressSpawnResponse(req) {
+			h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to build environment variables: %v", err))
+		}
 		return
 	}
 
@@ -321,7 +331,9 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 		_ = h.emitSpawnRejected(ctx, req, "spawn rejected because no supervisor is available", map[string]any{
 			"reason": "no_supervisor_available",
 		})
-		h.sendError(ctx, req.RequestID, "no supervisor available for organization")
+		if !shouldSuppressSpawnResponse(req) {
+			h.sendError(ctx, req.RequestID, "no supervisor available for organization")
+		}
 		return
 	}
 
@@ -340,7 +352,9 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 			"error":  err.Error(),
 			"reason": reason,
 		})
-		h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to launch process via supervisor: %v", err))
+		if !shouldSuppressSpawnResponse(req) {
+			h.sendError(ctx, req.RequestID, fmt.Sprintf("failed to launch process via supervisor: %v", err))
+		}
 		return
 	}
 	h.recordAgentOrganization(req.GuildID, req.AgentSpec.ID, orgID)
@@ -370,13 +384,17 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 			}
 
 			if msg.PID <= 0 {
-				h.sendError(ctx, req.RequestID, "timed out waiting to retrieve valid PID for spawned agent")
+				if !shouldSuppressSpawnResponse(req) {
+					h.sendError(ctx, req.RequestID, "timed out waiting to retrieve valid PID for spawned agent")
+				}
 				return
 			}
 		}
 	}
 
-	_ = h.responder.SendResponse(ctx, req.RequestID, msg)
+	if !shouldSuppressSpawnResponse(req) {
+		_ = h.responder.SendResponse(ctx, req.RequestID, msg)
+	}
 }
 
 func (h *ControlQueueHandler) emitSpawnRejected(ctx context.Context, req *protocol.SpawnRequest, message string, detail map[string]any) error {

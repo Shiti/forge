@@ -170,6 +170,7 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 
 	var wg sync.WaitGroup
 	queueListener := control.NewControlQueueListener(controlPlane)
+	responder := control.NewControlQueueResponder(controlPlane)
 
 	queueListener.OnSpawn = func(ctx context.Context, req *protocol.SpawnRequest) {
 		agentID := req.AgentSpec.ID
@@ -178,6 +179,11 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 		if scheduler.GlobalPlacementMap.IsActivelyTracked(req.GuildID, agentID) {
 			slog.Default().Info("Skipping duplicate spawn, agent already tracked",
 				"guild", req.GuildID, "agent", agentID)
+			_ = responder.SendResponse(ctx, req.RequestID, &protocol.SpawnResponse{
+				RequestID: req.RequestID,
+				Success:   true,
+				Message:   "spawn request already accepted",
+			})
 			return
 		}
 
@@ -204,22 +210,24 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 			}
 		}
 
-		nodeID, err := scheduler.GlobalScheduler.Schedule(req.AgentSpec)
+		req.ResponseMode = protocol.SpawnResponseModeNone
+		payloadBytes, err := json.Marshal(req)
 		if err != nil {
-			slog.Default().Error("Failed to schedule agent", "guild", req.GuildID, "agent", agentID, "error", err)
+			_ = responder.SendError(ctx, req.RequestID, fmt.Sprintf("failed to serialize accepted spawn request: %v", err))
 			return
 		}
-		payloadBytes, _ := json.Marshal(req)
-		attempts := scheduler.GlobalPlacementMap.MarkDispatched(req.GuildID, agentID, nodeID, payloadBytes)
+		scheduler.GlobalPlacementMap.MarkAccepted(req.GuildID, agentID, payloadBytes)
+		_ = responder.SendResponse(ctx, req.RequestID, &protocol.SpawnResponse{
+			RequestID: req.RequestID,
+			Success:   true,
+			Message:   "spawn request accepted",
+		})
 
-		wrapper := control.ControlMessageWrapper{
-			Command: "spawn",
-			Payload: payloadBytes,
-		}
-
-		wrapperBytes, _ := json.Marshal(wrapper)
-		_ = controlPlane.Push(ctx, "forge:control:node:"+nodeID, wrapperBytes)
-		slog.Default().Info("Scheduled agent to node", "agent", agentID, "node_id", nodeID, "attempt", attempts)
+		go func() {
+			if err := dispatchAcceptedSpawn(serverCtx, controlPlane, scheduler.GlobalPlacementMap, scheduler.GlobalScheduler, req.GuildID, agentID); err != nil {
+				slog.Default().Warn("Accepted spawn dispatch deferred to reconciler", "guild", req.GuildID, "agent", agentID, "error", err)
+			}
+		}()
 	}
 	queueListener.OnStop = func(ctx context.Context, req *protocol.StopRequest) {
 		placement, ok := scheduler.GlobalPlacementMap.Find(req.GuildID, req.AgentID)
@@ -377,6 +385,46 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 
 	wg.Wait()
 
+	return nil
+}
+
+func dispatchAcceptedSpawn(ctx context.Context, controlPlane control.ControlPlane, placements *scheduler.PlacementMap, sched *scheduler.Scheduler, guildID, agentID string) error {
+	placement, ok := placements.Find(guildID, agentID)
+	if !ok || placement.State != scheduler.SpawnAccepted {
+		return nil
+	}
+
+	var req protocol.SpawnRequest
+	if err := json.Unmarshal(placement.Payload, &req); err != nil {
+		return err
+	}
+
+	nodeID, err := sched.Schedule(req.AgentSpec)
+	if err != nil {
+		placements.MarkAccepted(guildID, agentID, placement.Payload)
+		if entry, found := placements.Find(guildID, agentID); found {
+			entry.Attempts = placement.Attempts + 1
+			placements.Put(entry)
+		}
+		return err
+	}
+
+	attempts := placements.MarkDispatched(req.GuildID, req.AgentSpec.ID, nodeID, placement.Payload)
+	wrapper := control.ControlMessageWrapper{
+		Command: "spawn",
+		Payload: placement.Payload,
+	}
+	wrapperBytes, _ := json.Marshal(wrapper)
+	if err := controlPlane.Push(ctx, "forge:control:node:"+nodeID, wrapperBytes); err != nil {
+		placements.MarkAccepted(guildID, agentID, placement.Payload)
+		if entry, found := placements.Find(guildID, agentID); found {
+			entry.Attempts = attempts
+			placements.Put(entry)
+		}
+		return err
+	}
+
+	slog.Default().Info("Scheduled accepted agent to node", "guild", req.GuildID, "agent", req.AgentSpec.ID, "node_id", nodeID, "attempt", attempts)
 	return nil
 }
 

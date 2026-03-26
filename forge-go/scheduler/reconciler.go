@@ -79,9 +79,27 @@ func (r *Reconciler) Start(ctx context.Context) {
 
 func (r *Reconciler) reconcile(ctx context.Context) {
 	r.reconcileDeadNodes(ctx)
+	r.reconcileAccepted(ctx)
 	r.reconcileStaleDispatches(ctx)
 	r.reconcileStaleAcks(ctx)
 	r.cleanupFailedPlacements()
+}
+
+func (r *Reconciler) reconcileAccepted(ctx context.Context) {
+	accepted := r.placementMap.GetAccepted()
+	for _, p := range accepted {
+		if p.Attempts >= r.config.MaxAttempts {
+			r.placementMap.MarkFailed(p.GuildID, p.AgentID)
+			slog.Default().Error("Accepted agent spawn exceeded max placement attempts, marking failed",
+				"guild", p.GuildID, "agent", p.AgentID, "attempts", p.Attempts)
+			continue
+		}
+
+		if err := r.dispatchAccepted(ctx, p); err != nil {
+			slog.Default().Warn("Accepted agent spawn placement retry failed",
+				"guild", p.GuildID, "agent", p.AgentID, "attempts", p.Attempts+1, "error", err)
+		}
+	}
 }
 
 // reconcileDeadNodes detects nodes with stale heartbeats and re-enqueues orphaned agents.
@@ -195,4 +213,43 @@ func (r *Reconciler) reenqueue(ctx context.Context, p AgentPlacement) {
 	} else {
 		slog.Default().Error("Failed to deserialize orphaned payload buffer", "error", err)
 	}
+}
+
+func (r *Reconciler) dispatchAccepted(ctx context.Context, p AgentPlacement) error {
+	var req protocol.SpawnRequest
+	if err := json.Unmarshal(p.Payload, &req); err != nil {
+		return err
+	}
+
+	nodeID, err := NewScheduler(r.registry).Schedule(req.AgentSpec)
+	if err != nil {
+		r.placementMap.MarkAccepted(p.GuildID, p.AgentID, p.Payload)
+		if entry, ok := r.placementMap.Find(p.GuildID, p.AgentID); ok {
+			entry.Attempts = p.Attempts + 1
+			r.placementMap.Put(entry)
+		}
+		return err
+	}
+
+	attempts := r.placementMap.MarkDispatched(req.GuildID, req.AgentSpec.ID, nodeID, p.Payload)
+	_ = attempts
+
+	wrapper := map[string]interface{}{
+		"command": "spawn",
+	}
+	var rawPayload interface{}
+	if err := json.Unmarshal(p.Payload, &rawPayload); err != nil {
+		return err
+	}
+	wrapper["payload"] = rawPayload
+	wrappedBytes, _ := json.Marshal(wrapper)
+	if err := r.transport.Push(ctx, "forge:control:node:"+nodeID, wrappedBytes); err != nil {
+		r.placementMap.MarkAccepted(req.GuildID, req.AgentSpec.ID, p.Payload)
+		if entry, ok := r.placementMap.Find(req.GuildID, req.AgentSpec.ID); ok {
+			entry.Attempts = attempts
+			r.placementMap.Put(entry)
+		}
+		return err
+	}
+	return nil
 }

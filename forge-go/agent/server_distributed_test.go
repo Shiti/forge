@@ -124,6 +124,13 @@ func TestStartServer_EnrichesMessagingConfigForNodeDispatch(t *testing.T) {
 	})
 	require.NoError(t, rdb.LPush(context.Background(), control.ControlQueueRequestKey, payload).Err())
 
+	respBytes, err := rdb.BRPop(context.Background(), 5*time.Second, "forge:control:response:dispatch-spawn-1").Result()
+	require.NoError(t, err)
+	var spawnResp protocol.SpawnResponse
+	require.NoError(t, json.Unmarshal([]byte(respBytes[1]), &spawnResp))
+	require.True(t, spawnResp.Success)
+	assert.Equal(t, "spawn request accepted", spawnResp.Message)
+
 	foundEcho := false
 	for i := 0; i < 3; i++ {
 		res, err := rdb.BRPop(context.Background(), 5*time.Second, "forge:control:node:node-dispatch-1").Result()
@@ -174,6 +181,127 @@ func TestStartServer_EnrichesMessagingConfigForNodeDispatch(t *testing.T) {
 	}
 	require.True(t, foundPlacement)
 	assert.Equal(t, "node-dispatch-1", placement.NodeID)
+}
+
+func TestStartServer_AcceptedSpawnSurvivesUntilNodeAvailable(t *testing.T) {
+	s, err := miniredis.Run()
+	require.NoError(t, err)
+	defer s.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: s.Addr()})
+	defer func() { _ = rdb.Close() }()
+
+	scheduler.GlobalNodeRegistry = scheduler.NewNodeRegistry()
+	scheduler.GlobalPlacementMap = scheduler.NewPlacementMap()
+	scheduler.GlobalScheduler = scheduler.NewScheduler(scheduler.GlobalNodeRegistry)
+
+	port := getTestPort(9460, 0)
+	cfg := &ServerConfig{
+		DatabaseURL:        "file:testserveraccepted?mode=memory&cache=shared",
+		RedisURL:           s.Addr(),
+		ListenAddress:      port,
+		LeaderElectionMode: "redis",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		_ = StartServer(ctx, cfg)
+	}()
+
+	baseURL := "http://" + port
+	require.Eventually(t, func() bool {
+		resp, err := http.Get(baseURL + "/readyz")
+		if err != nil {
+			return false
+		}
+		defer func() { _ = resp.Body.Close() }()
+		return resp.StatusCode == http.StatusOK
+	}, 5*time.Second, 100*time.Millisecond)
+
+	guildReq := map[string]interface{}{
+		"org_id": "org-1",
+		"spec": map[string]interface{}{
+			"id":          "guild-accepted",
+			"name":        "guild-accepted",
+			"description": "guild accepted test",
+			"agents": []map[string]interface{}{
+				{
+					"id":          "echo-agent",
+					"name":        "Echo Agent",
+					"description": "Echo",
+					"class_name":  "rustic_ai.core.agents.testutils.echo_agent.EchoAgent",
+				},
+			},
+		},
+	}
+	body, _ := json.Marshal(guildReq)
+	resp, err := http.Post(baseURL+"/api/guilds", "application/json", bytes.NewBuffer(body))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	var launchResp map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&launchResp))
+	_ = resp.Body.Close()
+	createdGuildID := launchResp["id"].(string)
+
+	spawnReq := protocol.SpawnRequest{
+		RequestID:      "dispatch-spawn-accepted",
+		OrganizationID: "org-1",
+		GuildID:        createdGuildID,
+		AgentSpec: protocol.AgentSpec{
+			ID:        "echo-agent",
+			Name:      "Echo Agent",
+			ClassName: "rustic_ai.core.agents.testutils.echo_agent.EchoAgent",
+		},
+		ClientProperties: protocol.JSONB{
+			"organization_id": "org-1",
+		},
+	}
+	payload, _ := json.Marshal(map[string]interface{}{
+		"command": "spawn",
+		"payload": spawnReq,
+	})
+	require.NoError(t, rdb.LPush(context.Background(), control.ControlQueueRequestKey, payload).Err())
+
+	acceptedRes, err := rdb.BRPop(context.Background(), 5*time.Second, "forge:control:response:dispatch-spawn-accepted").Result()
+	require.NoError(t, err)
+	var accepted protocol.SpawnResponse
+	require.NoError(t, json.Unmarshal([]byte(acceptedRes[1]), &accepted))
+	require.True(t, accepted.Success)
+	assert.Equal(t, "spawn request accepted", accepted.Message)
+
+	require.Eventually(t, func() bool {
+		placement, ok := scheduler.GlobalPlacementMap.Find(createdGuildID, "echo-agent")
+		return ok && placement.State == scheduler.SpawnAccepted
+	}, 2*time.Second, 100*time.Millisecond)
+
+	_, err = rdb.BRPop(context.Background(), 500*time.Millisecond, "forge:control:node:node-dispatch-late").Result()
+	require.Error(t, err)
+
+	nodeReq := map[string]interface{}{
+		"node_id": "node-dispatch-late",
+		"capacity": map[string]interface{}{
+			"cpus":   4,
+			"memory": 4096,
+			"gpus":   0,
+		},
+	}
+	nodeBody, _ := json.Marshal(nodeReq)
+	nResp, err := http.Post(baseURL+"/nodes/register", "application/json", bytes.NewBuffer(nodeBody))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, nResp.StatusCode)
+	_ = nResp.Body.Close()
+
+	require.NoError(t, dispatchAcceptedSpawn(context.Background(), control.NewRedisControlTransport(rdb), scheduler.GlobalPlacementMap, scheduler.GlobalScheduler, createdGuildID, "echo-agent"))
+
+	res, err := rdb.BRPop(context.Background(), 5*time.Second, "forge:control:node:node-dispatch-late").Result()
+	require.NoError(t, err)
+	var wrapper control.ControlMessageWrapper
+	require.NoError(t, json.Unmarshal([]byte(res[1]), &wrapper))
+	var dispatched protocol.SpawnRequest
+	require.NoError(t, json.Unmarshal(wrapper.Payload, &dispatched))
+	assert.Equal(t, protocol.SpawnResponseModeNone, dispatched.ResponseMode)
 }
 
 func TestStartServer_WithClient_RegistersNodeWithEmbeddedRedis(t *testing.T) {

@@ -27,8 +27,14 @@ type SpawnRequest struct {
 	MachineID        int               `json:"machine_id,omitempty"`
 	ClientType       string            `json:"client_type,omitempty"`
 	ClientProperties JSONB             `json:"client_properties,omitempty"`
+	ResponseMode     string            `json:"response_mode,omitempty"`
 	TraceContext     map[string]string `json:"trace_context,omitempty"`
 }
+
+const (
+	SpawnResponseModeStarted = "started"
+	SpawnResponseModeNone    = "none"
+)
 
 type StopRequest struct {
 	RequestID      string `json:"request_id"`

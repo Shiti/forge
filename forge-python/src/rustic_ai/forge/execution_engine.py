@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import threading
+import time
 import uuid
 from typing import Any, Dict, List, Optional, Type
 
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 CONTROL_QUEUE = "forge:control:requests"
 _CTRL_RESPONSE_STREAM = "CTRL_RESPONSES"
 _AGENT_STATUS_KV = "agent-status"
+_DEFAULT_ACCEPTED_WARMUP_SECONDS = 5.0
 
 
 def _ctrl_sanitize(name: str) -> str:
@@ -199,6 +201,12 @@ class ForgeExecutionEngine(ExecutionEngine):
     def __init__(self, guild_id: str, organization_id: str) -> None:
         super().__init__(guild_id, organization_id)
         self._agents: Dict[str, AgentSpec] = {}
+        self._accepted_warmup_seconds = float(
+            os.environ.get(
+                "FORGE_AGENT_ACCEPTED_WARMUP_SECONDS",
+                str(_DEFAULT_ACCEPTED_WARMUP_SECONDS),
+            )
+        )
 
         nats_url = os.environ.get("NATS_URL")
         if nats_url:
@@ -300,6 +308,7 @@ class ForgeExecutionEngine(ExecutionEngine):
             return None
 
         self._agents[agent_spec.id] = agent_spec
+        self._wait_for_initial_warmup()
         return RemoteAgentProxy(agent_spec)
 
     def stop_agent(self, guild_id: str, agent_id: str) -> None:
@@ -321,9 +330,9 @@ class ForgeExecutionEngine(ExecutionEngine):
         if self._backend == "nats":
             try:
                 status = self._nats.get_status(guild_id, agent_id)
-                return (
-                    status is not None and status.get("state", "unknown") == "running"
-                )
+                if status is not None:
+                    return status.get("state", "unknown") in {"starting", "running"}
+                return guild_id == self.guild_id and agent_id in self._agents
             except Exception as e:
                 logger.error("Failed to check agent status from NATS: %s", e)
                 return False
@@ -331,10 +340,13 @@ class ForgeExecutionEngine(ExecutionEngine):
             key = f"forge:agent:status:{guild_id}:{agent_id}"
             try:
                 val = self._rdb.get(key)
-                if not val:
-                    return False
-                status_data = json.loads(_decode_redis(val))
-                return status_data.get("state", "unknown") == "running"
+                if val:
+                    status_data = json.loads(_decode_redis(val))
+                    return status_data.get("state", "unknown") in {
+                        "starting",
+                        "running",
+                    }
+                return guild_id == self.guild_id and agent_id in self._agents
             except Exception as e:
                 logger.error("Failed to check agent status from Redis: %s", e)
                 return False
@@ -352,3 +364,8 @@ class ForgeExecutionEngine(ExecutionEngine):
             self.stop_agent(self.guild_id, aid)
         if self._backend == "nats":
             self._nats.close()
+
+    def _wait_for_initial_warmup(self) -> None:
+        if self._accepted_warmup_seconds <= 0:
+            return
+        time.sleep(self._accepted_warmup_seconds)
