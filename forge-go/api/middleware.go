@@ -48,9 +48,7 @@ func WithLogging(next http.Handler) http.Handler {
 		duration := time.Since(start)
 		statusCode := strconv.Itoa(rw.status)
 
-		// Record Prometheus RED Metrics
-		telemetry.APIRequestsTotal.WithLabelValues(r.Method, r.URL.Path, statusCode).Inc()
-		telemetry.APIRequestDuration.WithLabelValues(r.Method, r.URL.Path).Observe(duration.Seconds())
+		telemetry.RecordAPIRequest(r.Method, r.URL.Path, statusCode, duration)
 
 		logger := slog.Default()
 		logger.Info("HTTP Request",
@@ -71,9 +69,8 @@ func WithTelemetry(operation string, next http.Handler) http.Handler {
 	otelHandler := otelhttp.NewHandler(next, operation)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Track Inflight Requests dynamically
-		telemetry.APIInflightRequests.WithLabelValues(r.Method, r.URL.Path).Inc()
-		defer telemetry.APIInflightRequests.WithLabelValues(r.Method, r.URL.Path).Dec()
+		telemetry.AddAPIInflight(r.Method, r.URL.Path, 1)
+		defer telemetry.AddAPIInflight(r.Method, r.URL.Path, -1)
 
 		otelHandler.ServeHTTP(w, r)
 	})

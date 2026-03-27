@@ -59,7 +59,7 @@ func (l *ControlQueueListener) Start(ctx context.Context) {
 			return
 		default:
 			if depth, err := l.transport.QueueDepth(ctx, l.requestQueueKey); err == nil {
-				telemetry.QueueDepth.WithLabelValues(l.requestQueueKey).Set(float64(depth))
+				telemetry.SetQueueDepth(l.requestQueueKey, float64(depth))
 			}
 
 			data, err := l.transport.Pop(ctx, l.requestQueueKey, time.Second)
@@ -88,10 +88,10 @@ func (l *ControlQueueListener) Start(ctx context.Context) {
 						spanCtx, span := otel.Tracer("forge.control").Start(spanCtx, "queue.consume")
 						span.End()
 
-						telemetry.QueueConsumeTotal.WithLabelValues(l.requestQueueKey, "spawn").Inc()
+						telemetry.AddQueueConsume(l.requestQueueKey, "spawn")
 						go l.OnSpawn(spanCtx, &req)
 					} else {
-						telemetry.QueueProcessingErrorsTotal.WithLabelValues(l.requestQueueKey, "spawn", "json_unmarshal").Inc()
+						telemetry.AddQueueProcessingError(l.requestQueueKey, "spawn", "json_unmarshal")
 						slog.Error("ControlQueueListener failed to parse SpawnRequest payload", "err", err)
 					}
 				}
@@ -99,10 +99,10 @@ func (l *ControlQueueListener) Start(ctx context.Context) {
 				if l.OnStop != nil {
 					var req protocol.StopRequest
 					if err := json.Unmarshal(wrapper.Payload, &req); err == nil {
-						telemetry.QueueConsumeTotal.WithLabelValues(l.requestQueueKey, "stop").Inc()
+						telemetry.AddQueueConsume(l.requestQueueKey, "stop")
 						go l.OnStop(ctx, &req)
 					} else {
-						telemetry.QueueProcessingErrorsTotal.WithLabelValues(l.requestQueueKey, "stop", "json_unmarshal").Inc()
+						telemetry.AddQueueProcessingError(l.requestQueueKey, "stop", "json_unmarshal")
 						slog.Error("ControlQueueListener failed to parse StopRequest payload", "err", err)
 					}
 				}

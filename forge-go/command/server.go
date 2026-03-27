@@ -34,6 +34,13 @@ var (
 	serverBackend             string
 	serverEmbeddedNATSAddr    string
 	serverStateStore          string
+	serverTelemetryEnabled    bool
+	serverTelemetryMode       string
+	serverTelemetryEndpoint   string
+	serverTelemetryService    string
+	serverTelemetrySQLiteBin  string
+	serverTelemetrySQLiteDB   string
+	serverTelemetrySQLitePort int
 )
 
 func init() {
@@ -58,6 +65,13 @@ func init() {
 	ServerCmd.Flags().StringVar(&serverBackend, "backend", "redis", `Messaging backend: "redis" or "nats"`)
 	ServerCmd.Flags().StringVar(&serverEmbeddedNATSAddr, "embedded-nats-addr", "", "Bind address for embedded NATS (default: ephemeral port)")
 	ServerCmd.Flags().StringVar(&serverStateStore, "state-store", "", `State store backend: "diskcache" (default: in-memory)`)
+	ServerCmd.Flags().BoolVar(&serverTelemetryEnabled, "otel-enabled", false, "Enable OpenTelemetry export from Forge server")
+	ServerCmd.Flags().StringVar(&serverTelemetryMode, "otel-mode", "desktop_sqlite", `Telemetry backend mode: "desktop_sqlite" or "external_otlp"`)
+	ServerCmd.Flags().StringVar(&serverTelemetryEndpoint, "otel-endpoint", "", "OTLP/HTTP endpoint URL for external telemetry backend")
+	ServerCmd.Flags().StringVar(&serverTelemetryService, "otel-service-name", "forge-server", "OpenTelemetry service.name for Forge server")
+	ServerCmd.Flags().StringVar(&serverTelemetrySQLiteBin, "otel-sqlite-binary", "", "Path to sqlite-otel binary for desktop_sqlite mode")
+	ServerCmd.Flags().StringVar(&serverTelemetrySQLiteDB, "otel-sqlite-db-path", "", "Path to sqlite-otel SQLite database file")
+	ServerCmd.Flags().IntVar(&serverTelemetrySQLitePort, "otel-sqlite-port", 4318, "Port for sqlite-otel OTLP/HTTP listener")
 
 	RootCmd.AddCommand(ServerCmd)
 }
@@ -102,6 +116,13 @@ var ServerCmd = &cobra.Command{
 			ClientZMQBridgeMode:     serverClientZMQBridgeMode,
 			ClientAttachProcessTree: serverClientAttachTree,
 			StateStore:              serverStateStore,
+			TelemetryEnabled:        serverTelemetryEnabled,
+			TelemetryMode:           serverTelemetryMode,
+			TelemetryEndpoint:       serverTelemetryEndpoint,
+			TelemetryServiceName:    serverTelemetryService,
+			TelemetrySQLiteBinary:   serverTelemetrySQLiteBin,
+			TelemetrySQLiteDBPath:   serverTelemetrySQLiteDB,
+			TelemetrySQLitePort:     serverTelemetrySQLitePort,
 		}
 
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

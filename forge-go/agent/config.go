@@ -26,6 +26,13 @@ type ServerConfig struct {
 	GossipBindAddr          string
 	GossipJoinPeers         []string
 	StateStore              string
+	TelemetryEnabled        bool
+	TelemetryMode           string
+	TelemetryEndpoint       string
+	TelemetryServiceName    string
+	TelemetrySQLiteBinary   string
+	TelemetrySQLiteDBPath   string
+	TelemetrySQLitePort     int
 }
 
 type ClientConfig struct {

@@ -224,7 +224,7 @@ func (p *ProcessSupervisor) startProcess(ctx context.Context, guildID string, ag
 		return fmt.Errorf("failed to start agent process %s: %w", agent.ID, err)
 	}
 
-	telemetry.SupervisorBootDuration.WithLabelValues("local-node", "process").Observe(time.Since(startBootTime).Seconds())
+	telemetry.ObserveSupervisorBootDuration("local-node", "process", time.Since(startBootTime))
 
 	agent.SetPID(cmd.Process.Pid)
 	agent.SetState(StateRunning)
@@ -362,10 +362,10 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 					if pid > 0 {
 						if proc, err := process.NewProcess(int32(pid)); err == nil {
 							if cpuPct, err := proc.CPUPercent(); err == nil {
-								telemetry.AgentCPUCores.WithLabelValues(guildID, agent.ID, "local-node").Set(cpuPct)
+								telemetry.SetAgentCPUCores(guildID, agent.ID, "local-node", cpuPct)
 							}
 							if memInfo, err := proc.MemoryInfo(); err == nil {
-								telemetry.AgentMemoryBytes.WithLabelValues(guildID, agent.ID, "local-node").Set(float64(memInfo.RSS))
+								telemetry.SetAgentMemoryBytes(guildID, agent.ID, "local-node", float64(memInfo.RSS))
 							}
 						}
 					}
@@ -390,7 +390,7 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 		exitCode = fmt.Sprintf("%d", exitErr.ExitCode())
 	}
 
-	telemetry.AgentExitCodes.WithLabelValues(guildID, agent.ID, "local-node", exitCode).Inc()
+	telemetry.AddAgentExitCode(guildID, agent.ID, "local-node", exitCode)
 
 	if agent.IsStopRequested() {
 		agent.SetState(StateStopped)

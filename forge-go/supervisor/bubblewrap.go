@@ -235,7 +235,7 @@ func (p *BubblewrapSupervisor) startProcess(ctx context.Context, guildID string,
 		return fmt.Errorf("failed to start agent process %s: %w", agent.ID, err)
 	}
 
-	telemetry.SupervisorBootDuration.WithLabelValues("local-node", "bwrap").Observe(time.Since(startBootTime).Seconds())
+	telemetry.ObserveSupervisorBootDuration("local-node", "bwrap", time.Since(startBootTime))
 
 	agent.SetPID(cmd.Process.Pid)
 	agent.SetState(StateRunning)
@@ -286,10 +286,10 @@ func (p *BubblewrapSupervisor) monitorProcess(guildID string, agent *ManagedAgen
 					if pid > 0 {
 						if proc, err := process.NewProcess(int32(pid)); err == nil {
 							if cpuPct, err := proc.CPUPercent(); err == nil {
-								telemetry.AgentCPUCores.WithLabelValues(guildID, agent.ID, "local-node-bwrap").Set(cpuPct)
+								telemetry.SetAgentCPUCores(guildID, agent.ID, "local-node-bwrap", cpuPct)
 							}
 							if memInfo, err := proc.MemoryInfo(); err == nil {
-								telemetry.AgentMemoryBytes.WithLabelValues(guildID, agent.ID, "local-node-bwrap").Set(float64(memInfo.RSS))
+								telemetry.SetAgentMemoryBytes(guildID, agent.ID, "local-node-bwrap", float64(memInfo.RSS))
 							}
 						}
 					}
@@ -313,7 +313,7 @@ func (p *BubblewrapSupervisor) monitorProcess(guildID string, agent *ManagedAgen
 		exitCode = fmt.Sprintf("%d", exitErr.ExitCode())
 	}
 
-	telemetry.AgentExitCodes.WithLabelValues(guildID, agent.ID, "local-node-bwrap", exitCode).Inc()
+	telemetry.AddAgentExitCode(guildID, agent.ID, "local-node-bwrap", exitCode)
 
 	if agent.IsStopRequested() {
 		agent.SetState(StateStopped)

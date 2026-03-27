@@ -55,7 +55,7 @@ func (r *NodeRegistry) Heartbeat(nodeID string) bool {
 
 	if state, exists := r.nodes[nodeID]; exists {
 		latency := time.Since(state.LastHeartbeat)
-		telemetry.NodeHeartbeatLatency.WithLabelValues(nodeID).Observe(latency.Seconds())
+		telemetry.ObserveNodeHeartbeatLatency(nodeID, latency)
 
 		state.LastHeartbeat = time.Now()
 		return true
@@ -75,7 +75,7 @@ func (r *NodeRegistry) Deregister(nodeID string) {
 // recordMetricsLocked must be called with r.mu held.
 func (r *NodeRegistry) recordMetricsLocked() {
 	nodesRegistered := len(r.nodes)
-	telemetry.NodesRegistered.Set(float64(nodesRegistered))
+	telemetry.SetNodesRegistered(float64(nodesRegistered))
 
 	var availableSlots float64
 	for _, state := range r.nodes {
@@ -84,7 +84,7 @@ func (r *NodeRegistry) recordMetricsLocked() {
 			availableSlots += float64(freeCPU)
 		}
 	}
-	telemetry.AvailableAgentSlots.Set(availableSlots)
+	telemetry.SetAvailableAgentSlots(availableSlots)
 }
 
 func (r *NodeRegistry) IsHealthy(nodeID string) bool {

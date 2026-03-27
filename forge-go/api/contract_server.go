@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rustic-ai/forge/forge-go/api/contract"
+	"github.com/rustic-ai/forge/forge-go/telemetry"
 )
 
 var _ contract.ServerInterface = (*Server)(nil)
@@ -38,7 +38,7 @@ func (s *Server) GetOpenapiSha256(c *gin.Context) {
 }
 
 func (s *Server) GetMetrics(c *gin.Context) {
-	promhttp.Handler().ServeHTTP(c.Writer, c.Request)
+	telemetry.PrometheusHandler().ServeHTTP(c.Writer, c.Request)
 }
 
 func (s *Server) RegisterNode(c *gin.Context) {

@@ -21,7 +21,7 @@ func NewScheduler(reg *NodeRegistry) *Scheduler {
 func (s *Scheduler) Schedule(agentSpec protocol.AgentSpec) (string, error) {
 	start := time.Now()
 	defer func() {
-		telemetry.SchedulerPlacementDuration.Observe(time.Since(start).Seconds())
+		telemetry.ObserveSchedulerPlacementDuration(time.Since(start))
 	}()
 
 	var reqCPUs, reqMem, reqGPUs int
@@ -40,7 +40,7 @@ func (s *Scheduler) Schedule(agentSpec protocol.AgentSpec) (string, error) {
 
 	nodes := s.registry.ListHealthy()
 	if len(nodes) == 0 {
-		telemetry.SchedulerPlacementErrors.Inc()
+		telemetry.AddSchedulerPlacementError()
 		return "", fmt.Errorf("no healthy nodes available in the cluster")
 	}
 
@@ -63,7 +63,7 @@ func (s *Scheduler) Schedule(agentSpec protocol.AgentSpec) (string, error) {
 	}
 
 	if bestNode == "" {
-		telemetry.SchedulerPlacementErrors.Inc()
+		telemetry.AddSchedulerPlacementError()
 		return "", fmt.Errorf("no node with sufficient capacity [%d cpus, %d mem, %d gpus]", reqCPUs, reqMem, reqGPUs)
 	}
 

@@ -87,11 +87,11 @@ func PushSpawnRequest(ctx context.Context, pusher ControlPusher, req SpawnReques
 	const queueName = "forge:control:requests"
 
 	if err := pusher.Push(ctx, queueName, data); err != nil {
-		telemetry.QueueProcessingErrorsTotal.WithLabelValues(queueName, "spawn", "push_failed").Inc()
+		telemetry.AddQueueProcessingError(queueName, "spawn", "push_failed")
 		return fmt.Errorf("push to %s: %w", queueName, err)
 	}
 
-	telemetry.QueuePublishTotal.WithLabelValues(queueName, "spawn").Inc()
+	telemetry.AddQueuePublish(queueName, "spawn")
 
 	return nil
 }

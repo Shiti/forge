@@ -26,6 +26,8 @@ import (
 	"github.com/rustic-ai/forge/forge-go/scheduler"
 	"github.com/rustic-ai/forge/forge-go/scheduler/leader"
 	"github.com/rustic-ai/forge/forge-go/supervisor"
+	"github.com/rustic-ai/forge/forge-go/telemetry"
+	"github.com/rustic-ai/forge/forge-go/version"
 )
 
 const defaultEmbeddedRedisAddr = "127.0.0.1:6379"
@@ -119,6 +121,27 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 	defer func() {
 		if redisClient != nil {
 			_ = redisClient.Close()
+		}
+	}()
+
+	telemetryRuntime, err := telemetry.Start(serverCtx, telemetry.Config{
+		Enabled:          cfg.TelemetryEnabled,
+		Mode:             cfg.TelemetryMode,
+		EndpointURL:      cfg.TelemetryEndpoint,
+		ServiceName:      cfg.TelemetryServiceName,
+		ServiceVersion:   version.Version,
+		SQLiteBinaryPath: cfg.TelemetrySQLiteBinary,
+		SQLiteDBPath:     cfg.TelemetrySQLiteDBPath,
+		SQLitePort:       cfg.TelemetrySQLitePort,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initialize telemetry: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := telemetryRuntime.Shutdown(shutdownCtx); err != nil {
+			l.Error("Telemetry shutdown failed", "error", err)
 		}
 	}()
 

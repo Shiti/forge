@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -226,20 +225,20 @@ func StartClient(ctx context.Context, config *ClientConfig) error {
 				return
 			case <-metricsTicker.C:
 				if cpuPercent, err := cpu.Percent(0, false); err == nil && len(cpuPercent) > 0 {
-					telemetry.NodeCPUUtilization.WithLabelValues(config.NodeID).Set(cpuPercent[0])
+					telemetry.SetNodeCPUUtilization(config.NodeID, cpuPercent[0])
 				}
 				if virtMem, err := mem.VirtualMemory(); err == nil {
-					telemetry.NodeRAMBytes.WithLabelValues(config.NodeID).Set(float64(virtMem.Used))
+					telemetry.SetNodeRAMBytes(config.NodeID, float64(virtMem.Used))
 				}
 				if diskUsage, err := disk.Usage("/"); err == nil {
-					telemetry.NodeDiskFreeBytes.WithLabelValues(config.NodeID).Set(float64(diskUsage.Free))
+					telemetry.SetNodeDiskFreeBytes(config.NodeID, float64(diskUsage.Free))
 				}
 			}
 		}
 	}()
 
 	metricsMux := http.NewServeMux()
-	metricsMux.Handle("GET /metrics", promhttp.Handler())
+	metricsMux.Handle("GET /metrics", telemetry.PrometheusHandler())
 	metricsMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

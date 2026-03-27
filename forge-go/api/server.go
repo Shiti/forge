@@ -55,7 +55,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.server = &http.Server{
 		Addr:    s.listenAddr,
-		Handler: WithLogging(WithRecovery(WithCORS(WithJSONResponse(router)))),
+		Handler: WithLogging(WithRecovery(WithCORS(WithJSONResponse(WithTelemetry("forge.http", router))))),
 	}
 
 	errChan := make(chan error, 1)

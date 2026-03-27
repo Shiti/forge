@@ -292,7 +292,7 @@ func (d *DockerSupervisor) Launch(ctx context.Context, guildID string, agentSpec
 		}
 		return fmt.Errorf("failed to start container: %w", err)
 	}
-	telemetry.SupervisorBootDuration.WithLabelValues("local-node", "docker").Observe(time.Since(startBootTime).Seconds())
+	telemetry.ObserveSupervisorBootDuration("local-node", "docker", time.Since(startBootTime))
 
 	d.mu.Lock()
 	agent := &DockerAgent{
@@ -331,14 +331,14 @@ func (d *DockerSupervisor) monitorContainer(ctx context.Context, guildID string,
 	case result := <-statusCh:
 		agent.LastExitAt = time.Now()
 		exitCode := fmt.Sprintf("%d", result.StatusCode)
-		telemetry.AgentExitCodes.WithLabelValues(guildID, agent.ID, "local-docker", exitCode).Inc()
+		telemetry.AddAgentExitCode(guildID, agent.ID, "local-docker", exitCode)
 		logger.Warn("container exited", "exit_code", result.StatusCode)
 
 	case err := <-errCh:
 		agent.LastExitAt = time.Now()
 		agent.LastError = err
 		logger.Error("container wait failed", "error", err)
-		telemetry.AgentExitCodes.WithLabelValues(guildID, agent.ID, "local-docker", "error").Inc()
+		telemetry.AddAgentExitCode(guildID, agent.ID, "local-docker", "error")
 	}
 
 	d.stopBridge(guildID, agent.ID)
@@ -557,9 +557,9 @@ func (d *DockerSupervisor) pollStats(ctx context.Context, guildID, agentID, cont
 
 				if systemDelta > 0 && cpuDelta > 0 {
 					cpuPct := (float64(cpuDelta) / float64(systemDelta)) * float64(len(v.CPUStats.CPUUsage.PercpuUsage)) * 100.0
-					telemetry.AgentCPUCores.WithLabelValues(guildID, agentID, "local-docker").Set(cpuPct)
+					telemetry.SetAgentCPUCores(guildID, agentID, "local-docker", cpuPct)
 				}
-				telemetry.AgentMemoryBytes.WithLabelValues(guildID, agentID, "local-docker").Set(float64(v.MemoryStats.Usage))
+				telemetry.SetAgentMemoryBytes(guildID, agentID, "local-docker", float64(v.MemoryStats.Usage))
 			}
 			_ = stats.Body.Close()
 
