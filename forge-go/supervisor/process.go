@@ -380,6 +380,7 @@ func (p *ProcessSupervisor) monitorProcess(guildID string, agent *ManagedAgent, 
 	err := cmd.Wait()
 	close(done)
 	p.stopBridge(guildID, agent.ID)
+	agent.ClearPID()
 
 	agent.LastExitAt = time.Now()
 	exitCode := "1"
@@ -479,6 +480,9 @@ func (p *ProcessSupervisor) Stop(ctx context.Context, guildID, agentID string) e
 
 	if pid > 0 {
 		_ = terminateProcessTree(pid, p.detachGroup)
+		if err := waitForAgentExit(ctx, agent, pid); err != nil {
+			return err
+		}
 	}
 
 	if p.statusStore != nil {
@@ -487,6 +491,28 @@ func (p *ProcessSupervisor) Stop(ctx context.Context, guildID, agentID string) e
 	}
 
 	return nil
+}
+
+func waitForAgentExit(ctx context.Context, agent *ManagedAgent, pid int) error {
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if !processExists(pid) || agent.GetPID() == 0 {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("timed out waiting for agent process %d to exit", pid)
+		case <-ticker.C:
+		}
+	}
 }
 
 func (p *ProcessSupervisor) Status(ctx context.Context, guildID, agentID string) (string, error) {

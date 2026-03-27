@@ -9,31 +9,18 @@ import (
 )
 
 func configureCommandForProcessGroup(cmd *exec.Cmd, detach bool) {
-	if detach {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		cmd.Cancel = func() error {
-			if cmd.Process != nil {
-				return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			}
-			return nil
-		}
-		return
-	}
-
-	cmd.SysProcAttr = nil
+	// Always isolate the child into its own process group so launcher-style
+	// commands like uvx can be terminated reliably as a unit during shutdown.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process != nil {
-			return terminateAttachedProcessTree(cmd.Process.Pid)
+			return terminateProcessTree(cmd.Process.Pid, detach)
 		}
 		return nil
 	}
 }
 
 func terminateProcessTree(pid int, detach bool) error {
-	if !detach {
-		return terminateAttachedProcessTree(pid)
-	}
-
 	pgid, err := syscall.Getpgid(pid)
 	if err == nil {
 		_ = syscall.Kill(-pgid, syscall.SIGTERM)
@@ -49,6 +36,9 @@ func terminateProcessTree(pid int, detach bool) error {
 	}
 
 	if syscall.Kill(pid, 0) == nil {
+		if !detach {
+			_ = terminateAttachedProcessTree(pid)
+		}
 		if pgid > 0 {
 			_ = syscall.Kill(-pgid, syscall.SIGKILL)
 		} else {

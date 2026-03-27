@@ -180,7 +180,6 @@ func StartClient(ctx context.Context, config *ClientConfig) error {
 	if err := queueHandler.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start node queue listener: %w", err)
 	}
-	defer queueHandler.Stop()
 
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
@@ -269,6 +268,9 @@ func StartClient(ctx context.Context, config *ClientConfig) error {
 	<-ctx.Done()
 
 	log.Info("Forge client shutting down.")
+	log.Info("Stopping embedded client workloads before client exit.")
+	queueHandler.Stop()
+	log.Info("Embedded client workloads stopped.")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

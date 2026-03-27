@@ -62,6 +62,12 @@ func (m *ManagedAgent) SetPID(pid int) {
 	m.StartedAt = time.Now()
 }
 
+func (m *ManagedAgent) ClearPID() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.PID = 0
+}
+
 func (m *ManagedAgent) GetPID() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

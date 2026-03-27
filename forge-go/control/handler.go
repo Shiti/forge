@@ -164,19 +164,24 @@ func (h *ControlQueueHandler) Stop() {
 	if !h.stopAgentsOnExit {
 		return
 	}
-	if h.supFactory == nil {
-		return
-	}
 
-	h.supMu.RLock()
-	supervisors := make([]supervisor.AgentSupervisor, 0, len(h.supByOrg))
-	for _, sup := range h.supByOrg {
-		supervisors = append(supervisors, sup)
+	supervisors := make([]supervisor.AgentSupervisor, 0, len(h.supByOrg)+1)
+	if h.supFactory == nil {
+		if h.sup != nil {
+			supervisors = append(supervisors, h.sup)
+		}
+	} else {
+		h.supMu.RLock()
+		for _, sup := range h.supByOrg {
+			supervisors = append(supervisors, sup)
+		}
+		h.supMu.RUnlock()
 	}
-	h.supMu.RUnlock()
 
 	for _, sup := range supervisors {
-		_ = sup.StopAll(context.Background())
+		if err := sup.StopAll(context.Background()); err != nil {
+			slog.Warn("failed to stop managed agents during control handler shutdown", "error", err)
+		}
 	}
 }
 
