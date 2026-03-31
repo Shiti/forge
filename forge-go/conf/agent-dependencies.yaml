@@ -45,36 +45,42 @@ llm:
 
 llm_local_qwen3_5_0_8b:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: openai/rustic/qwen3.5-0.8b-starter
     base_url: http://localhost:55262/v1
 
 llm_local_nomic_embed:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: openai/rustic/nomic-embed-default
     base_url: http://localhost:55262/v1
 
 llm_local_qwen3_5_2b:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: openai/rustic/qwen3.5-2b-balanced
     base_url: http://localhost:55262/v1
 
 llm_local_qwen3_5_4b:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: openai/rustic/qwen3.5-4b-quality
     base_url: http://localhost:55262/v1
 
 llm_local_qwen3_4b_text:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: openai/rustic/qwen3-4b-text
     base_url: http://localhost:55262/v1
 
 llm_local_gemma3_4b:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: openai/rustic/gemma-3-4b-it
     base_url: http://localhost:55262/v1

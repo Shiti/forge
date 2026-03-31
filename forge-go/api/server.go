@@ -10,10 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rustic-ai/forge/forge-go/api/contract"
 	"github.com/rustic-ai/forge/forge-go/filesystem"
+	"github.com/rustic-ai/forge/forge-go/forgepath"
 	"github.com/rustic-ai/forge/forge-go/gateway"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/infraevents"
 	"github.com/rustic-ai/forge/forge-go/messaging"
+	"github.com/rustic-ai/forge/forge-go/modelfit"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/supervisor"
 )
@@ -29,6 +31,7 @@ type Server struct {
 	fileStore      *filesystem.LocalFileStore
 	localUI        *localUIState
 	observeService *observeService
+	modelFit       *modelFitService
 	listenAddr     string
 	server         *http.Server
 }
@@ -52,6 +55,20 @@ func NewServer(db store.Store, statusStore supervisor.AgentStatusStore, controlP
 
 func (s *Server) WithObservability(mode, sqliteDBPath string) *Server {
 	s.observeService = newObserveService(mode, sqliteDBPath)
+	return s
+}
+
+func (s *Server) WithModelFit(catalogPath, dependencyConfigPath string, profiler modelfit.Profiler) *Server {
+	if profiler == nil {
+		profiler = modelfit.DefaultProfiler{}
+	}
+	if strings.TrimSpace(catalogPath) == "" {
+		catalogPath = forgepath.LocalModelCatalogPath()
+	}
+	if strings.TrimSpace(dependencyConfigPath) == "" {
+		dependencyConfigPath = forgepath.DependencyConfigPath()
+	}
+	s.modelFit = newModelFitService(catalogPath, dependencyConfigPath, profiler)
 	return s
 }
 
@@ -134,6 +151,7 @@ func (s *Server) buildRouter() *gin.Engine {
 	}
 	if enableUI {
 		s.registerRusticUIRoutes(router, gemGen)
+		router.GET("/rustic/modelfit/local-models", wrapHTTP(s.handleListLocalModelFits()))
 		router.GET("/rustic/observe/guilds/:guild_id/messages/:msg_id/spans", wrapHTTPWithPathValues(s.handleObserveMessageSpans(), "guild_id", "msg_id"))
 		router.GET("/rustic/catalog/blueprints/:blueprint_id/dependencies", wrapHTTPWithPathValues(handleGetBlueprintDependencies(s.store), "blueprint_id"))
 		router.GET("/rustic/dependencies", wrapHTTP(handleListConfiguredDependencies()))

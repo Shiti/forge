@@ -1,0 +1,96 @@
+models:
+  - id: qwen3_5_0_8b_starter
+    display_name: Qwen 3.5 0.8B Starter
+    dependency_key: llm_local_qwen3_5_0_8b
+    model_name: openai/rustic/qwen3.5-0.8b-starter
+    parameter_count_b: 0.8
+    quantization: q4_k_m
+    context_length: 32768
+    min_ram_bytes: 2147483648
+    preferred_vram_bytes: 1610612736
+    estimated_memory_bytes: 1288490189
+    embedding_only: false
+    use_case_tags: [chat, coding]
+    quality_rank: 5
+    token_speed_hint: 70
+    preferred_discrete_gpu: true
+
+  - id: qwen3_5_2b_balanced
+    display_name: Qwen 3.5 2B Balanced
+    dependency_key: llm_local_qwen3_5_2b
+    model_name: openai/rustic/qwen3.5-2b-balanced
+    parameter_count_b: 2.0
+    quantization: q4_k_m
+    context_length: 32768
+    min_ram_bytes: 4294967296
+    preferred_vram_bytes: 3221225472
+    estimated_memory_bytes: 3006477107
+    embedding_only: false
+    use_case_tags: [chat, coding, reasoning]
+    quality_rank: 4
+    token_speed_hint: 34
+    preferred_discrete_gpu: true
+
+  - id: qwen3_5_4b_quality
+    display_name: Qwen 3.5 4B Quality
+    dependency_key: llm_local_qwen3_5_4b
+    model_name: openai/rustic/qwen3.5-4b-quality
+    parameter_count_b: 4.0
+    quantization: q4_k_m
+    context_length: 32768
+    min_ram_bytes: 7516192768
+    preferred_vram_bytes: 5368709120
+    estimated_memory_bytes: 5583457485
+    embedding_only: false
+    use_case_tags: [chat, coding, reasoning]
+    quality_rank: 2
+    token_speed_hint: 18
+    preferred_discrete_gpu: true
+
+  - id: qwen3_4b_text
+    display_name: Qwen 3 4B Text
+    dependency_key: llm_local_qwen3_4b_text
+    model_name: openai/rustic/qwen3-4b-text
+    parameter_count_b: 4.0
+    quantization: q4_k_m
+    context_length: 32768
+    min_ram_bytes: 6979321856
+    preferred_vram_bytes: 5368709120
+    estimated_memory_bytes: 5368709120
+    embedding_only: false
+    use_case_tags: [chat, coding]
+    quality_rank: 3
+    token_speed_hint: 20
+    preferred_discrete_gpu: true
+
+  - id: gemma3_4b_it
+    display_name: Gemma 3 4B Instruct
+    dependency_key: llm_local_gemma3_4b
+    model_name: openai/rustic/gemma-3-4b-it
+    parameter_count_b: 4.0
+    quantization: q4_k_m
+    context_length: 32768
+    min_ram_bytes: 7516192768
+    preferred_vram_bytes: 5905580032
+    estimated_memory_bytes: 5905580032
+    embedding_only: false
+    use_case_tags: [chat, reasoning]
+    quality_rank: 1
+    token_speed_hint: 16
+    preferred_discrete_gpu: true
+
+  - id: nomic_embed_default
+    display_name: Nomic Embed Default
+    dependency_key: llm_local_nomic_embed
+    model_name: openai/rustic/nomic-embed-default
+    parameter_count_b: 0.3
+    quantization: q8_0
+    context_length: 8192
+    min_ram_bytes: 1073741824
+    preferred_vram_bytes: 1073741824
+    estimated_memory_bytes: 751619277
+    embedding_only: true
+    use_case_tags: [embedding]
+    quality_rank: 1
+    token_speed_hint: 120
+    preferred_discrete_gpu: false

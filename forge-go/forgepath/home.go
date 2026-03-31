@@ -16,6 +16,10 @@ const (
 	// DefaultDependencyConfigPath is the default relative path used when the
 	// env var is not set and no CLI flag overrides it.
 	DefaultDependencyConfigPath = "conf/" + DependencyConfigFile
+
+	LocalModelCatalogFile        = "local-model-catalog.yaml"
+	LocalModelCatalogEnv         = "FORGE_LOCAL_MODEL_CATALOG"
+	DefaultLocalModelCatalogPath = "conf/" + LocalModelCatalogFile
 )
 
 // DependencyConfigPath returns the dependency config file path, checking the
@@ -25,6 +29,13 @@ func DependencyConfigPath() string {
 		return p
 	}
 	return DefaultDependencyConfigPath
+}
+
+func LocalModelCatalogPath() string {
+	if p := os.Getenv(LocalModelCatalogEnv); p != "" {
+		return p
+	}
+	return DefaultLocalModelCatalogPath
 }
 
 var (

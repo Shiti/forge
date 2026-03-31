@@ -34,10 +34,13 @@ def _build_forge_binary(forge_bin: Path, repo_root: Path) -> None:
                 time.time() - os.path.getmtime(str(forge_bin)) < 60
             ):
                 return
+            build_env = os.environ.copy()
+            build_env.setdefault("GOCACHE", str(repo_root / "forge-go" / ".gocache"))
             subprocess.run(
                 ["go", "build", "-o", str(forge_bin), "main.go"],
                 cwd=str(repo_root / "forge-go"),
                 check=True,
+                env=build_env,
             )
         finally:
             fcntl.flock(lock_file, fcntl.LOCK_UN)
@@ -103,6 +106,7 @@ def go_server(redis_server) -> Generator[str, None, None]:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "forge_server.db"
+        forge_home = Path(tmpdir) / "forge-home"
         port = _free_port()
 
         # Minimal dependency config to enable guild-scoped file endpoints.
@@ -120,10 +124,15 @@ filesystem:
         )
 
         forge_log = open(Path(tmpdir) / "forge_server.log", "w")
+        server_env = os.environ.copy()
+        server_env["FORGE_HOME"] = str(forge_home)
+
         forge_proc = subprocess.Popen(
             [
                 str(forge_bin),
                 "server",
+                "--forge-home",
+                str(forge_home),
                 "--db",
                 f"sqlite://{db_path}",
                 "--redis",
@@ -133,6 +142,7 @@ filesystem:
                 "--dependency-config",
                 str(dep_path),
             ],
+            env=server_env,
             stdout=forge_log,
             stderr=forge_log,
         )

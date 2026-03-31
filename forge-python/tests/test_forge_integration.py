@@ -36,10 +36,13 @@ def _build_forge_binary(forge_bin: Path, repo_root: Path) -> None:
                 time.time() - os.path.getmtime(str(forge_bin)) < 60
             ):
                 return
+            build_env = os.environ.copy()
+            build_env.setdefault("GOCACHE", str(repo_root / "forge-go" / ".gocache"))
             subprocess.run(
                 ["go", "build", "-o", str(forge_bin), "main.go"],
                 cwd=str(repo_root / "forge-go"),
                 check=True,
+                env=build_env,
             )
         finally:
             fcntl.flock(lock_file, fcntl.LOCK_UN)
@@ -206,12 +209,14 @@ entries:
             _build_forge_binary(forge_bin, REPO_ROOT)
 
             db_path = Path(tmpdir) / "forge.db"
+            forge_home = Path(tmpdir) / "forge-home"
             listen_port = _free_port()
 
             env = os.environ.copy()
             env["REDIS_HOST"] = "localhost"
             env["REDIS_PORT"] = str(redis_server)
             env["FORGE_AGENT_REGISTRY"] = str(reg_path)
+            env["FORGE_HOME"] = str(forge_home)
             env["PYTHONPATH"] = (
                 f"{RUSTIC_AI_CORE / 'src'}:{RUSTIC_AI_REDIS / 'src'}:{RUSTIC_AI_CORE / 'tests'}:{FORGE_PYTHON_SRC}"
             )
@@ -221,6 +226,8 @@ entries:
                 [
                     str(forge_bin),
                     "server",
+                    "--forge-home",
+                    str(forge_home),
                     "--db",
                     f"sqlite://{db_path}",
                     "--redis",

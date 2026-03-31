@@ -337,7 +337,8 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 	fileStore := filesystem.NewLocalFileStore(resolver)
 
 	httpServer := api.NewServer(db, statusStore, controlPlane, msgBackend, fileStore, cfg.ListenAddress).
-		WithObservability(cfg.TelemetryMode, cfg.TelemetrySQLiteDBPath)
+		WithObservability(cfg.TelemetryMode, cfg.TelemetrySQLiteDBPath).
+		WithModelFit("", cfg.DependencyConfig, nil)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
