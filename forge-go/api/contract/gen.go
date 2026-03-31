@@ -99,6 +99,7 @@ type AgentDependencyInput struct {
 	DependencyVar *string `json:"dependency_var"`
 	GuildLevel    *bool   `json:"guild_level,omitempty"`
 	OrgLevel      *bool   `json:"org_level,omitempty"`
+	ResolvedType  *string `json:"resolved_type,omitempty"`
 }
 
 // AgentDependencyOutput Represents a dependency for an agent.
@@ -123,6 +124,7 @@ type AgentDependencyOutput struct {
 	DependencyVar *string `json:"dependency_var"`
 	GuildLevel    *bool   `json:"guild_level,omitempty"`
 	OrgLevel      *bool   `json:"org_level,omitempty"`
+	ResolvedType  *string `json:"resolved_type,omitempty"`
 	VariableName  *string `json:"variable_name,omitempty"`
 }
 
@@ -465,8 +467,9 @@ type CreateBoardRequest struct {
 
 // DependencySpec defines model for DependencySpec.
 type DependencySpec struct {
-	ClassName  string                `json:"class_name"`
-	Properties *map[string]JsonValue `json:"properties,omitempty"`
+	ClassName    string                `json:"class_name"`
+	Properties   *map[string]JsonValue `json:"properties,omitempty"`
+	ProvidedType *string               `json:"provided_type,omitempty"`
 }
 
 // ForwardHeader Represents the header for a forwarded message.

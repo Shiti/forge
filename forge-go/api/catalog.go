@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"sort"
 	"strings"
 
 	"github.com/rustic-ai/forge/forge-go/guild"
@@ -13,6 +15,7 @@ import (
 	"github.com/rustic-ai/forge/forge-go/helper/idgen"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
+	"gopkg.in/yaml.v3"
 )
 
 func RegisterCatalogRoutes(mux *http.ServeMux, s store.Store) {
@@ -27,6 +30,7 @@ func registerCatalogRoutes(mux *http.ServeMux, s store.Store, pusher protocol.Co
 	mux.HandleFunc("POST /catalog/blueprints", handleCreateBlueprint(s))
 	mux.HandleFunc("GET /catalog/blueprints", handleListBlueprints(s))
 	mux.HandleFunc("GET /catalog/blueprints/{id}", handleGetBlueprint(s))
+	mux.HandleFunc("GET /catalog/blueprints/{blueprint_id}/dependencies", handleGetBlueprintDependencies(s))
 	mux.HandleFunc("GET /catalog/users/{user_id}/blueprints/accessible", handleGetAccessibleBlueprints(s))
 	mux.HandleFunc("GET /catalog/organizations/{org_id}/blueprints/owned", handleGetOrganizationOwnedBlueprints(s))
 	mux.HandleFunc("GET /catalog/users/{user_id}/blueprints/owned", handleGetUserOwnedBlueprints(s))
@@ -56,6 +60,7 @@ func registerCatalogRoutes(mux *http.ServeMux, s store.Store, pusher protocol.Co
 	mux.HandleFunc("POST /catalog/agents", handleRegisterCatalogAgent(s))
 	mux.HandleFunc("GET /catalog/agents", handleGetCatalogAgents(s))
 	mux.HandleFunc("GET /catalog/agents/{class_name}", handleGetCatalogAgentByClassName(s))
+	mux.HandleFunc("GET /catalog/agents/{class_name}/dependencies", handleGetCatalogAgentDependenciesByClassName(s))
 	mux.HandleFunc("GET /catalog/agents/message_schema", handleGetMessageSchemaByFormat(s))
 
 	mux.HandleFunc("POST /catalog/guilds/{guild_id}/users/{user_id}", handleAddUserToGuild(s))
@@ -289,6 +294,29 @@ func handleGetBlueprint(s store.Store) http.HandlerFunc {
 		}
 
 		ReplyJSON(w, http.StatusOK, convertBlueprintToDetails(bp))
+	}
+}
+
+func handleGetBlueprintDependencies(s store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		blueprintID := r.PathValue("blueprint_id")
+		bp, err := s.GetBlueprint(blueprintID)
+		if err != nil {
+			if err == store.ErrNotFound {
+				ReplyError(w, http.StatusNotFound, "blueprint not found")
+				return
+			}
+			ReplyError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		summaries, err := resolveBlueprintDependencies(s, bp, dependencyConfigPath())
+		if err != nil {
+			ReplyError(w, http.StatusInternalServerError, "failed to resolve blueprint dependencies: "+err.Error())
+			return
+		}
+
+		ReplyJSON(w, http.StatusOK, summaries)
 	}
 }
 
@@ -805,12 +833,12 @@ func handleGetBlueprintsByTag(s store.Store) http.HandlerFunc {
 func handleRegisterCatalogAgent(s store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			QualifiedClassName string                   `json:"qualified_class_name"`
-			AgentName          string                   `json:"agent_name"`
-			AgentDoc           *string                  `json:"agent_doc"`
-			AgentPropsSchema   map[string]interface{}   `json:"agent_props_schema"`
-			MessageHandlers    map[string]interface{}   `json:"message_handlers"`
-			AgentDependencies  []map[string]interface{} `json:"agent_dependencies"`
+			QualifiedClassName string                 `json:"qualified_class_name"`
+			AgentName          string                 `json:"agent_name"`
+			AgentDoc           *string                `json:"agent_doc"`
+			AgentPropsSchema   map[string]interface{} `json:"agent_props_schema"`
+			MessageHandlers    map[string]interface{} `json:"message_handlers"`
+			AgentDependencies  []AgentDependencyEntry `json:"agent_dependencies"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			ReplyError(w, http.StatusUnprocessableEntity, "invalid json")
@@ -835,15 +863,11 @@ func handleRegisterCatalogAgent(s store.Store) http.HandlerFunc {
 
 		agentDeps := map[string]interface{}{}
 		for _, dep := range req.AgentDependencies {
-			if dep == nil {
-				continue
-			}
-			key, _ := dep["dependency_key"].(string)
-			if key == "" {
+			if dep.DependencyKey == "" {
 				ReplyError(w, http.StatusUnprocessableEntity, "agent_dependencies[].dependency_key required")
 				return
 			}
-			agentDeps[key] = dep
+			agentDeps[dep.DependencyKey] = dep
 		}
 
 		entry := &store.CatalogAgentEntry{
@@ -907,17 +931,277 @@ func handleGetCatalogAgentByClassName(s store.Store) http.HandlerFunc {
 	}
 }
 
+func handleGetCatalogAgentDependenciesByClassName(s store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		className := r.PathValue("class_name")
+		agent, err := s.GetAgentByClassName(className)
+		if err != nil {
+			ReplyError(w, http.StatusNotFound, "agent not found")
+			return
+		}
+
+		resp := catalogAgentToResponse(agent)
+		ReplyJSON(w, http.StatusOK, resp.AgentDependencies)
+	}
+}
+
+func handleListConfiguredDependencies() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		providedType := strings.TrimSpace(r.PathValue("provided_type"))
+		if providedType == "" {
+			providedType = strings.TrimSpace(r.URL.Query().Get("provided_type"))
+		}
+
+		deps, err := loadConfiguredDependencyEntries(dependencyConfigPath(), providedType)
+		if err != nil {
+			ReplyError(w, http.StatusInternalServerError, "failed to load configured dependencies: "+err.Error())
+			return
+		}
+
+		ReplyJSON(w, http.StatusOK, deps)
+	}
+}
+
+func resolveBlueprintDependencies(s store.Store, bp *store.Blueprint, configPath string) ([]BlueprintAgentDependencySummary, error) {
+	specBytes, err := json.Marshal(bp.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("marshal blueprint spec: %w", err)
+	}
+
+	var guildSpec protocol.GuildSpec
+	if err := json.Unmarshal(specBytes, &guildSpec); err != nil {
+		return nil, fmt.Errorf("parse blueprint spec: %w", err)
+	}
+
+	configuredDeps, err := loadConfiguredDependencyEntries(configPath, "")
+	if err != nil {
+		return nil, err
+	}
+
+	byProvidedType := map[string][]ConfiguredDependencyEntry{}
+	for _, dep := range configuredDeps {
+		if dep.ProvidedType == "" {
+			continue
+		}
+		byProvidedType[dep.ProvidedType] = append(byProvidedType[dep.ProvidedType], dep)
+	}
+
+	out := make([]BlueprintAgentDependencySummary, 0, len(guildSpec.Agents))
+	for _, agent := range guildSpec.Agents {
+		summary := BlueprintAgentDependencySummary{
+			AgentName:          agent.Name,
+			QualifiedClassName: agent.ClassName,
+			Dependencies:       []BlueprintAgentDependencyEntry{},
+		}
+
+		entry, err := s.GetAgentByClassName(agent.ClassName)
+		if err == nil {
+			resp := catalogAgentToResponse(entry)
+			for _, dep := range resp.AgentDependencies {
+				providers := []ConfiguredDependencyEntry{}
+				if dep.ResolvedType != nil {
+					providers = append(providers, byProvidedType[*dep.ResolvedType]...)
+				}
+				summary.Dependencies = append(summary.Dependencies, BlueprintAgentDependencyEntry{
+					BindingKey:    blueprintDependencyBindingKey(agent.ID, dep),
+					DependencyKey: dep.DependencyKey,
+					DependencyVar: dep.DependencyVar,
+					GuildLevel:    dep.GuildLevel,
+					OrgLevel:      dep.OrgLevel,
+					AgentLevel:    dep.AgentLevel,
+					VariableName:  dep.VariableName,
+					ResolvedType:  dep.ResolvedType,
+					Providers:     providers,
+				})
+			}
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+
+		out = append(out, summary)
+	}
+
+	return out, nil
+}
+
+func blueprintDependencyBindingKey(agentID string, dep AgentDependencyEntry) string {
+	if dep.OrgLevel != nil && *dep.OrgLevel {
+		return "shared:" + dep.DependencyKey
+	}
+	if dep.GuildLevel != nil && *dep.GuildLevel {
+		return "shared:" + dep.DependencyKey
+	}
+	return "agent:" + agentID + ":" + dep.DependencyKey
+}
+
+func applyBlueprintDependencyBindings(
+	s store.Store,
+	bp *store.Blueprint,
+	spec *protocol.GuildSpec,
+	bindings map[string]string,
+	configPath string,
+) error {
+	if len(bindings) == 0 {
+		return nil
+	}
+
+	configuredByKey, err := loadConfiguredDependencySpecsByKey(configPath)
+	if err != nil {
+		return err
+	}
+
+	summaries, err := resolveBlueprintDependencies(s, bp, configPath)
+	if err != nil {
+		return err
+	}
+
+	allowedByBindingKey := map[string]map[string]protocol.DependencySpec{}
+	for _, summary := range summaries {
+		for _, dep := range summary.Dependencies {
+			if _, exists := allowedByBindingKey[dep.BindingKey]; !exists {
+				allowedByBindingKey[dep.BindingKey] = map[string]protocol.DependencySpec{}
+			}
+			for _, provider := range dep.Providers {
+				spec, ok := configuredByKey[provider.Key]
+				if ok {
+					allowedByBindingKey[dep.BindingKey][provider.Key] = spec
+				}
+			}
+		}
+	}
+
+	if spec.DependencyMap == nil {
+		spec.DependencyMap = map[string]protocol.DependencySpec{}
+	}
+
+	for bindingKey, providerKey := range bindings {
+		allowedProviders, ok := allowedByBindingKey[bindingKey]
+		if !ok {
+			return fmt.Errorf("unknown dependency binding %q", bindingKey)
+		}
+		resolvedSpec, ok := allowedProviders[providerKey]
+		if !ok {
+			return fmt.Errorf("provider %q is not valid for binding %q", providerKey, bindingKey)
+		}
+
+		if strings.HasPrefix(bindingKey, "shared:") {
+			dependencyKey := strings.TrimPrefix(bindingKey, "shared:")
+			spec.DependencyMap[dependencyKey] = resolvedSpec
+			continue
+		}
+
+		if strings.HasPrefix(bindingKey, "agent:") {
+			rest := strings.TrimPrefix(bindingKey, "agent:")
+			parts := strings.SplitN(rest, ":", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid dependency binding key %q", bindingKey)
+			}
+			agentID := parts[0]
+			dependencyKey := parts[1]
+
+			applied := false
+			for i := range spec.Agents {
+				if spec.Agents[i].ID != agentID {
+					continue
+				}
+				if spec.Agents[i].DependencyMap == nil {
+					spec.Agents[i].DependencyMap = map[string]protocol.DependencySpec{}
+				}
+				spec.Agents[i].DependencyMap[dependencyKey] = resolvedSpec
+				applied = true
+				break
+			}
+			if !applied {
+				return fmt.Errorf("agent %q not found for binding %q", agentID, bindingKey)
+			}
+			continue
+		}
+
+		return fmt.Errorf("unsupported dependency binding key %q", bindingKey)
+	}
+
+	return nil
+}
+
+func loadConfiguredDependencyEntries(configPath, providedType string) ([]ConfiguredDependencyEntry, error) {
+	fileData, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []ConfiguredDependencyEntry{}, nil
+		}
+		return nil, fmt.Errorf("read dependency config: %w", err)
+	}
+
+	var fileDeps map[string]protocol.DependencySpec
+	if err := yaml.Unmarshal(fileData, &fileDeps); err != nil {
+		return nil, fmt.Errorf("parse dependency config: %w", err)
+	}
+
+	keys := make([]string, 0, len(fileDeps))
+	for key, spec := range fileDeps {
+		spec.Normalize()
+		if providedType != "" && spec.ProvidedType != providedType {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	out := make([]ConfiguredDependencyEntry, 0, len(keys))
+	for _, key := range keys {
+		spec := fileDeps[key]
+		spec.Normalize()
+		out = append(out, ConfiguredDependencyEntry{
+			Key:          key,
+			ClassName:    spec.ClassName,
+			ProvidedType: spec.ProvidedType,
+			Properties:   spec.Properties,
+		})
+	}
+	return out, nil
+}
+
+func loadConfiguredDependencySpecsByKey(configPath string) (map[string]protocol.DependencySpec, error) {
+	fileData, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]protocol.DependencySpec{}, nil
+		}
+		return nil, fmt.Errorf("read dependency config: %w", err)
+	}
+
+	var fileDeps map[string]protocol.DependencySpec
+	if err := yaml.Unmarshal(fileData, &fileDeps); err != nil {
+		return nil, fmt.Errorf("parse dependency config: %w", err)
+	}
+
+	for key, spec := range fileDeps {
+		spec.Normalize()
+		fileDeps[key] = spec
+	}
+
+	return fileDeps, nil
+}
+
 func catalogAgentToResponse(a *store.CatalogAgentEntry) AgentEntryResponse {
 	// Convert AgentDependencies map to list of values (matching Python's list(map.values()))
-	var deps []interface{}
+	var deps []AgentDependencyEntry
 	if a.AgentDependencies != nil {
-		deps = make([]interface{}, 0, len(a.AgentDependencies))
+		deps = make([]AgentDependencyEntry, 0, len(a.AgentDependencies))
 		for _, v := range a.AgentDependencies {
-			deps = append(deps, v)
+			raw, err := json.Marshal(v)
+			if err != nil {
+				continue
+			}
+			var dep AgentDependencyEntry
+			if err := json.Unmarshal(raw, &dep); err != nil {
+				continue
+			}
+			deps = append(deps, dep)
 		}
 	}
 	if deps == nil {
-		deps = []interface{}{}
+		deps = []AgentDependencyEntry{}
 	}
 	return AgentEntryResponse{
 		QualifiedClassName: a.QualifiedClassName,
@@ -1120,6 +1404,10 @@ func handleLaunchGuildFromBlueprint(s store.Store, pusher protocol.ControlPusher
 		guildSpec.Name = req.GuildName
 		if req.Description != nil {
 			guildSpec.Description = *req.Description
+		}
+		if err := applyBlueprintDependencyBindings(s, blueprint, &guildSpec, req.DependencyBindings, dependencyConfigPath()); err != nil {
+			ReplyError(w, http.StatusUnprocessableEntity, "invalid dependency_bindings: "+err.Error())
+			return
 		}
 
 		var model *store.GuildModel

@@ -48,8 +48,9 @@ func TestGuildSpecJSONRoundTrip_FullPayloadParity(t *testing.T) {
 				},
 				DependencyMap: map[string]DependencySpec{
 					"llm": {
-						ClassName:  "rustic_ai.litellm.agent_ext.llm.LiteLLMResolver",
-						Properties: map[string]interface{}{"model": "gpt-4o-mini"},
+						ClassName:    "rustic_ai.litellm.agent_ext.llm.LiteLLMResolver",
+						ProvidedType: "rustic_ai.core.llm.LLM",
+						Properties:   map[string]interface{}{"model": "gpt-4o-mini"},
 					},
 				},
 				AdditionalDependencies: []string{"forge-python"},
@@ -70,8 +71,9 @@ func TestGuildSpecJSONRoundTrip_FullPayloadParity(t *testing.T) {
 		},
 		DependencyMap: map[string]DependencySpec{
 			"kvstore": {
-				ClassName:  "rustic_ai.core.guild.agent_ext.depends.kvstore.InMemoryKVStoreResolver",
-				Properties: map[string]interface{}{},
+				ClassName:    "rustic_ai.core.guild.agent_ext.depends.kvstore.InMemoryKVStoreResolver",
+				ProvidedType: "rustic_ai.core.kvstore.KVStore",
+				Properties:   map[string]interface{}{},
 			},
 		},
 		Routes: &RoutingSlip{
@@ -130,3 +132,69 @@ func TestGuildSpecJSONRoundTrip_FullPayloadParity(t *testing.T) {
 }
 
 func strPtr(v string) *string { return &v }
+
+func TestAgentNeedsJSONRoundTrip_FullPayloadParity(t *testing.T) {
+	requiredFalse := false
+	requiredTrue := true
+	needs := AgentNeeds{
+		ClassName: "rustic_ai.browser.agent.BrowserAgent",
+		Needs: NeedsSpec{
+			Secrets: []SecretNeed{
+				{
+					Key:      "OPENAI_API_KEY",
+					Label:    "OpenAI API Key",
+					Required: &requiredFalse,
+				},
+			},
+			OAuth: []OAuthNeed{
+				{
+					Provider: "google",
+					Label:    "Google Account",
+					Scopes:   []string{"gmail.readonly", "drive.readonly"},
+					Required: &requiredTrue,
+				},
+			},
+			Capabilities: []CapabilityNeed{
+				{Type: "network", Label: "External network access"},
+				{Type: "filesystem", Label: "Local filesystem access"},
+			},
+			Network: NetworkNeeds{
+				Allow: []string{"api.openai.com", "generativelanguage.googleapis.com"},
+			},
+			Filesystem: FilesystemNeeds{
+				Allow: []FilesystemAccessNeed{
+					{Path: "/home/user/code/project", Mode: "rw"},
+				},
+			},
+		},
+	}
+
+	originalJSON, err := json.Marshal(needs)
+	if err != nil {
+		t.Fatalf("marshal original needs: %v", err)
+	}
+
+	var originalMap map[string]interface{}
+	if err := json.Unmarshal(originalJSON, &originalMap); err != nil {
+		t.Fatalf("unmarshal original needs into map: %v", err)
+	}
+
+	var parsed AgentNeeds
+	if err := json.Unmarshal(originalJSON, &parsed); err != nil {
+		t.Fatalf("unmarshal into AgentNeeds: %v", err)
+	}
+
+	roundJSON, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatalf("marshal parsed needs: %v", err)
+	}
+
+	var roundMap map[string]interface{}
+	if err := json.Unmarshal(roundJSON, &roundMap); err != nil {
+		t.Fatalf("unmarshal round-trip needs into map: %v", err)
+	}
+
+	if !reflect.DeepEqual(originalMap, roundMap) {
+		t.Fatalf("AgentNeeds DTO JSON round-trip changed payload.\noriginal=%s\nroundtrip=%s", string(originalJSON), string(roundJSON))
+	}
+}

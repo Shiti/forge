@@ -105,3 +105,69 @@ func TestRoutingRuleUnmarshal_DefaultRouteTimes(t *testing.T) {
 		t.Fatalf("expected route_times default 1")
 	}
 }
+
+func TestNeedsSpec_Defaults(t *testing.T) {
+	needs := NewNeedsSpec()
+
+	if needs.Secrets == nil {
+		t.Fatalf("expected secrets default slice")
+	}
+	if needs.OAuth == nil {
+		t.Fatalf("expected oauth default slice")
+	}
+	if needs.Capabilities == nil {
+		t.Fatalf("expected capabilities default slice")
+	}
+	if needs.Network.Allow == nil {
+		t.Fatalf("expected network.allow default slice")
+	}
+	if needs.Filesystem.Allow == nil {
+		t.Fatalf("expected filesystem.allow default slice")
+	}
+}
+
+func TestAgentNeedsUnmarshal_Defaults(t *testing.T) {
+	raw := []byte(`{
+		"class_name":"  rustic_ai.browser.agent.BrowserAgent  ",
+		"needs":{
+			"secrets":[{"key":" OPENAI_API_KEY "}],
+			"oauth":[{"provider":" google "}],
+			"capabilities":[{"type":" filesystem "}],
+			"network":{"allow":[" api.openai.com "]},
+			"filesystem":{"allow":[{"path":" /tmp/project ","mode":" rw "}]}
+		}
+	}`)
+
+	var needs AgentNeeds
+	if err := json.Unmarshal(raw, &needs); err != nil {
+		t.Fatalf("unmarshal agent needs: %v", err)
+	}
+
+	if needs.ClassName != "rustic_ai.browser.agent.BrowserAgent" {
+		t.Fatalf("expected trimmed class name, got %q", needs.ClassName)
+	}
+	if len(needs.Needs.Secrets) != 1 || needs.Needs.Secrets[0].Key != "OPENAI_API_KEY" {
+		t.Fatalf("expected normalized secret key")
+	}
+	if needs.Needs.Secrets[0].Required == nil || !*needs.Needs.Secrets[0].Required {
+		t.Fatalf("expected secret required default true")
+	}
+	if len(needs.Needs.OAuth) != 1 || needs.Needs.OAuth[0].Provider != "google" {
+		t.Fatalf("expected normalized oauth provider")
+	}
+	if needs.Needs.OAuth[0].Required == nil || !*needs.Needs.OAuth[0].Required {
+		t.Fatalf("expected oauth required default true")
+	}
+	if len(needs.Needs.Capabilities) != 1 || needs.Needs.Capabilities[0].Type != "filesystem" {
+		t.Fatalf("expected normalized capability type")
+	}
+	if len(needs.Needs.Network.Allow) != 1 || needs.Needs.Network.Allow[0] != "api.openai.com" {
+		t.Fatalf("expected normalized network allow")
+	}
+	if len(needs.Needs.Filesystem.Allow) != 1 {
+		t.Fatalf("expected filesystem allow entry")
+	}
+	if needs.Needs.Filesystem.Allow[0].Path != "/tmp/project" || needs.Needs.Filesystem.Allow[0].Mode != "rw" {
+		t.Fatalf("expected normalized filesystem need")
+	}
+}

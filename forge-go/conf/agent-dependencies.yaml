@@ -1,8 +1,10 @@
 kvstore:
   class_name: rustic_ai.core.guild.agent_ext.depends.kvstore.InMemoryKVStoreResolver
+  provided_type: rustic_ai.core.kvstore.KVStore
   properties: {}
 filesystem:
   class_name: rustic_ai.core.guild.agent_ext.depends.filesystem.FileSystemResolver
+  provided_type: rustic_ai.core.filesystem.FileSystem
   properties:
     path_base: /tmp
     protocol: file
@@ -10,6 +12,7 @@ filesystem:
       auto_mkdir: true
 code_runner:
   class_name: rustic_ai.core.guild.agent_ext.depends.code_execution.stateless.InProcessCodeInterpreterResolver
+  provided_type: rustic_ai.core.code_execution.CodeRunner
   properties: {}
 embeddings:
   class_name: rustic_ai.langchain.agent_ext.embeddings.openai.OpenAIEmbeddingsResolver
@@ -35,6 +38,7 @@ kb_backend:
 
 llm:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: openai/rustic/qwen3.5-0.8b-starter
     base_url: http://localhost:55262/v1
@@ -80,6 +84,7 @@ llm_local_gemma3_4b:
 
 llm_openai:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: gpt-5.4
 
@@ -101,6 +106,7 @@ llm_anthropic_opus:
 
 llm_gemini:
   class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
   properties:
     model: gemini/gemini-3.1
 

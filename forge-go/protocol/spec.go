@@ -33,8 +33,9 @@ func (a *AgentTag) UnmarshalJSON(data []byte) error {
 
 // DependencySpec maps a dependency to a resolver class.
 type DependencySpec struct {
-	ClassName  string                 `json:"class_name" yaml:"class_name"`
-	Properties map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+	ClassName    string                 `json:"class_name" yaml:"class_name"`
+	ProvidedType string                 `json:"provided_type,omitempty" yaml:"provided_type,omitempty"`
+	Properties   map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
 func NewDependencySpec(className string) DependencySpec {
@@ -47,6 +48,8 @@ func NewDependencySpec(className string) DependencySpec {
 }
 
 func (d *DependencySpec) Normalize() {
+	d.ClassName = strings.TrimSpace(d.ClassName)
+	d.ProvidedType = strings.TrimSpace(d.ProvidedType)
 	if d.Properties == nil {
 		d.Properties = map[string]interface{}{}
 	}
@@ -59,6 +62,306 @@ func (d *DependencySpec) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*d = DependencySpec(raw)
+	d.Normalize()
+	return nil
+}
+
+type SecretNeed struct {
+	Key      string `json:"key" yaml:"key"`
+	Label    string `json:"label,omitempty" yaml:"label,omitempty"`
+	Required *bool  `json:"required,omitempty" yaml:"required,omitempty"`
+}
+
+func NewSecretNeed(key string) SecretNeed {
+	s := SecretNeed{Key: key}
+	s.Normalize()
+	return s
+}
+
+func (s *SecretNeed) Normalize() {
+	s.Key = strings.TrimSpace(s.Key)
+	s.Label = strings.TrimSpace(s.Label)
+	if s.Required == nil {
+		s.Required = boolPtr(true)
+	}
+}
+
+func (s *SecretNeed) UnmarshalJSON(data []byte) error {
+	type alias SecretNeed
+	raw := alias(NewSecretNeed(""))
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*s = SecretNeed(raw)
+	s.Normalize()
+	return nil
+}
+
+type OAuthNeed struct {
+	Provider string   `json:"provider" yaml:"provider"`
+	Label    string   `json:"label,omitempty" yaml:"label,omitempty"`
+	Scopes   []string `json:"scopes,omitempty" yaml:"scopes,omitempty"`
+	Required *bool    `json:"required,omitempty" yaml:"required,omitempty"`
+}
+
+func NewOAuthNeed(provider string) OAuthNeed {
+	o := OAuthNeed{
+		Provider: provider,
+		Scopes:   []string{},
+	}
+	o.Normalize()
+	return o
+}
+
+func (o *OAuthNeed) Normalize() {
+	o.Provider = strings.TrimSpace(o.Provider)
+	o.Label = strings.TrimSpace(o.Label)
+	if o.Scopes == nil {
+		o.Scopes = []string{}
+	}
+	for i := range o.Scopes {
+		o.Scopes[i] = strings.TrimSpace(o.Scopes[i])
+	}
+	if o.Required == nil {
+		o.Required = boolPtr(true)
+	}
+}
+
+func (o *OAuthNeed) UnmarshalJSON(data []byte) error {
+	type alias OAuthNeed
+	raw := alias(NewOAuthNeed(""))
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*o = OAuthNeed(raw)
+	o.Normalize()
+	return nil
+}
+
+type CapabilityNeed struct {
+	Type  string `json:"type" yaml:"type"`
+	Label string `json:"label,omitempty" yaml:"label,omitempty"`
+}
+
+func NewCapabilityNeed(capabilityType string) CapabilityNeed {
+	c := CapabilityNeed{Type: capabilityType}
+	c.Normalize()
+	return c
+}
+
+func (c *CapabilityNeed) Normalize() {
+	c.Type = strings.TrimSpace(c.Type)
+	c.Label = strings.TrimSpace(c.Label)
+}
+
+func (c *CapabilityNeed) UnmarshalJSON(data []byte) error {
+	type alias CapabilityNeed
+	raw := alias(NewCapabilityNeed(""))
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*c = CapabilityNeed(raw)
+	c.Normalize()
+	return nil
+}
+
+type NetworkNeeds struct {
+	Allow []string `json:"allow,omitempty" yaml:"allow,omitempty"`
+}
+
+func NewNetworkNeeds() NetworkNeeds {
+	n := NetworkNeeds{Allow: []string{}}
+	n.Normalize()
+	return n
+}
+
+func (n *NetworkNeeds) Normalize() {
+	if n.Allow == nil {
+		n.Allow = []string{}
+	}
+	for i := range n.Allow {
+		n.Allow[i] = strings.TrimSpace(n.Allow[i])
+	}
+}
+
+func (n *NetworkNeeds) UnmarshalJSON(data []byte) error {
+	type alias NetworkNeeds
+	raw := alias(NewNetworkNeeds())
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*n = NetworkNeeds(raw)
+	n.Normalize()
+	return nil
+}
+
+type FilesystemAccessNeed struct {
+	Path string `json:"path" yaml:"path"`
+	Mode string `json:"mode,omitempty" yaml:"mode,omitempty"`
+}
+
+func NewFilesystemAccessNeed(path string) FilesystemAccessNeed {
+	f := FilesystemAccessNeed{Path: path}
+	f.Normalize()
+	return f
+}
+
+func (f *FilesystemAccessNeed) Normalize() {
+	f.Path = strings.TrimSpace(f.Path)
+	f.Mode = strings.TrimSpace(f.Mode)
+}
+
+func (f *FilesystemAccessNeed) UnmarshalJSON(data []byte) error {
+	type alias FilesystemAccessNeed
+	raw := alias(NewFilesystemAccessNeed(""))
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*f = FilesystemAccessNeed(raw)
+	f.Normalize()
+	return nil
+}
+
+type FilesystemNeeds struct {
+	Allow []FilesystemAccessNeed `json:"allow,omitempty" yaml:"allow,omitempty"`
+}
+
+func NewFilesystemNeeds() FilesystemNeeds {
+	f := FilesystemNeeds{Allow: []FilesystemAccessNeed{}}
+	f.Normalize()
+	return f
+}
+
+func (f *FilesystemNeeds) Normalize() {
+	if f.Allow == nil {
+		f.Allow = []FilesystemAccessNeed{}
+	}
+	for i := range f.Allow {
+		f.Allow[i].Normalize()
+	}
+}
+
+func (f *FilesystemNeeds) UnmarshalJSON(data []byte) error {
+	type alias FilesystemNeeds
+	raw := alias(NewFilesystemNeeds())
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*f = FilesystemNeeds(raw)
+	f.Normalize()
+	return nil
+}
+
+type NeedsSpec struct {
+	Secrets      []SecretNeed     `json:"secrets,omitempty" yaml:"secrets,omitempty"`
+	OAuth        []OAuthNeed      `json:"oauth,omitempty" yaml:"oauth,omitempty"`
+	Capabilities []CapabilityNeed `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	Network      NetworkNeeds     `json:"network,omitempty" yaml:"network,omitempty"`
+	Filesystem   FilesystemNeeds  `json:"filesystem,omitempty" yaml:"filesystem,omitempty"`
+}
+
+func NewNeedsSpec() NeedsSpec {
+	n := NeedsSpec{
+		Secrets:      []SecretNeed{},
+		OAuth:        []OAuthNeed{},
+		Capabilities: []CapabilityNeed{},
+		Network:      NewNetworkNeeds(),
+		Filesystem:   NewFilesystemNeeds(),
+	}
+	n.Normalize()
+	return n
+}
+
+func (n *NeedsSpec) Normalize() {
+	if n.Secrets == nil {
+		n.Secrets = []SecretNeed{}
+	}
+	for i := range n.Secrets {
+		n.Secrets[i].Normalize()
+	}
+	if n.OAuth == nil {
+		n.OAuth = []OAuthNeed{}
+	}
+	for i := range n.OAuth {
+		n.OAuth[i].Normalize()
+	}
+	if n.Capabilities == nil {
+		n.Capabilities = []CapabilityNeed{}
+	}
+	for i := range n.Capabilities {
+		n.Capabilities[i].Normalize()
+	}
+	n.Network.Normalize()
+	n.Filesystem.Normalize()
+}
+
+func (n *NeedsSpec) UnmarshalJSON(data []byte) error {
+	type alias NeedsSpec
+	raw := alias(NewNeedsSpec())
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*n = NeedsSpec(raw)
+	n.Normalize()
+	return nil
+}
+
+type AgentNeeds struct {
+	ClassName string    `json:"class_name" yaml:"class_name"`
+	Needs     NeedsSpec `json:"needs" yaml:"needs"`
+}
+
+func NewAgentNeeds(className string) AgentNeeds {
+	a := AgentNeeds{
+		ClassName: className,
+		Needs:     NewNeedsSpec(),
+	}
+	a.Normalize()
+	return a
+}
+
+func (a *AgentNeeds) Normalize() {
+	a.ClassName = strings.TrimSpace(a.ClassName)
+	a.Needs.Normalize()
+}
+
+func (a *AgentNeeds) UnmarshalJSON(data []byte) error {
+	type alias AgentNeeds
+	raw := alias(NewAgentNeeds(""))
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*a = AgentNeeds(raw)
+	a.Normalize()
+	return nil
+}
+
+type DependencyNeeds struct {
+	ClassName string    `json:"class_name" yaml:"class_name"`
+	Needs     NeedsSpec `json:"needs" yaml:"needs"`
+}
+
+func NewDependencyNeeds(className string) DependencyNeeds {
+	d := DependencyNeeds{
+		ClassName: className,
+		Needs:     NewNeedsSpec(),
+	}
+	d.Normalize()
+	return d
+}
+
+func (d *DependencyNeeds) Normalize() {
+	d.ClassName = strings.TrimSpace(d.ClassName)
+	d.Needs.Normalize()
+}
+
+func (d *DependencyNeeds) UnmarshalJSON(data []byte) error {
+	type alias DependencyNeeds
+	raw := alias(NewDependencyNeeds(""))
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*d = DependencyNeeds(raw)
 	d.Normalize()
 	return nil
 }

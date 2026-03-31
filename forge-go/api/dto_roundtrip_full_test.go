@@ -76,7 +76,14 @@ func TestAPIDTOs_JSONRoundTrip_FullMatrix(t *testing.T) {
 				AgentDoc:           "Echo",
 				AgentPropsSchema:   map[string]interface{}{"type": "object"},
 				MessageHandlers:    map[string]interface{}{},
-				AgentDependencies:  []map[string]interface{}{},
+				AgentDependencies: []AgentDependencyEntry{
+					{
+						DependencyKey: "llm",
+						AgentLevel:    ptrBool(true),
+						VariableName:  ptrString("llm"),
+						ResolvedType:  ptrString("rustic_ai.core.llm.LLM"),
+					},
+				},
 			},
 		},
 		{
@@ -268,3 +275,4 @@ func assertJSONObjectEqual(t *testing.T, a, b []byte) {
 }
 
 func ptrString(v string) *string { return &v }
+func ptrBool(v bool) *bool       { return &v }

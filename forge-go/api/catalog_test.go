@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rustic-ai/forge/forge-go/guild/store"
@@ -262,6 +264,122 @@ func TestGetAccessibleBlueprintsHTTP(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestLaunchGuildFromBlueprint_AppliesDependencyBindings(t *testing.T) {
+	db, err := store.NewGormStore("sqlite", "file::memory:")
+	if err != nil {
+		t.Fatalf("failed to init db: %v", err)
+	}
+
+	configPath := filepath.Join(t.TempDir(), "agent-dependencies.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+llm_openai:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
+  properties:
+    model: gpt-5.4
+llm_gemini:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
+  properties:
+    model: gemini/gemini-3.1
+`), 0o600); err != nil {
+		t.Fatalf("failed to write dependency config: %v", err)
+	}
+	t.Setenv("FORGE_DEPENDENCY_CONFIG", configPath)
+
+	agentLevel := true
+	varName := "llm"
+	resolvedType := "rustic_ai.core.llm.LLM"
+	if err := db.RegisterAgent(&store.CatalogAgentEntry{
+		QualifiedClassName: "rustic_ai.llm_agent.llm_agent.LLMAgent",
+		AgentName:          "LLMAgent",
+		AgentDoc:           ptrString("LLM agent"),
+		AgentPropsSchema:   store.JSONB{"type": "object"},
+		MessageHandlers:    store.JSONB{},
+		AgentDependencies: store.JSONB{
+			"llm": map[string]any{
+				"dependency_key": "llm",
+				"agent_level":    agentLevel,
+				"variable_name":  varName,
+				"resolved_type":  resolvedType,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("failed to register agent: %v", err)
+	}
+
+	bp, err := db.CreateBlueprint(&store.Blueprint{
+		Name:        "Launch BP",
+		Description: "dependency binding launch",
+		Exposure:    store.ExposurePublic,
+		AuthorID:    "author-1",
+		Spec: store.JSONB{
+			"name":        "Launch BP",
+			"description": "dependency binding launch",
+			"agents": []any{
+				map[string]any{
+					"id":          "research_agent",
+					"name":        "Research Agent",
+					"description": "Answers questions",
+					"class_name":  "rustic_ai.llm_agent.llm_agent.LLMAgent",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create blueprint: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterCatalogRoutes(mux, db)
+
+	reqBody := LaunchGuildFromBlueprintRequest{
+		GuildName: "Research Chat",
+		UserID:    "user-1",
+		OrgID:     "org-1",
+		DependencyBindings: map[string]string{
+			"agent:research_agent:llm": "llm_gemini",
+		},
+	}
+
+	b, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", "/catalog/blueprints/"+bp.ID+"/guilds", bytes.NewBuffer(b))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusCreated {
+		t.Fatalf("expected 201, got %v: %s", status, rr.Body.String())
+	}
+
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&created); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	guildModel, err := db.GetGuild(created.ID)
+	if err != nil {
+		t.Fatalf("failed to load created guild: %v", err)
+	}
+	guildSpec := store.ToGuildSpec(guildModel)
+	if len(guildSpec.Agents) != 1 {
+		t.Fatalf("expected one agent, got %d", len(guildSpec.Agents))
+	}
+	dep, ok := guildSpec.Agents[0].DependencyMap["llm"]
+	if !ok {
+		t.Fatalf("expected llm binding to be applied to agent dependency_map")
+	}
+	if dep.ClassName != "rustic_ai.litellm.agent_ext.llm.LiteLLMResolver" {
+		t.Fatalf("unexpected class_name: %s", dep.ClassName)
+	}
+	if dep.Properties["model"] != "gemini/gemini-3.1" {
+		t.Fatalf("unexpected provider properties: %#v", dep.Properties)
+	}
 }
 
 func TestGetGuildsForUserWithStatuses(t *testing.T) {

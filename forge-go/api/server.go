@@ -28,6 +28,7 @@ type Server struct {
 	infraPublisher *infraevents.Publisher
 	fileStore      *filesystem.LocalFileStore
 	localUI        *localUIState
+	observeService *observeService
 	listenAddr     string
 	server         *http.Server
 }
@@ -47,6 +48,11 @@ func NewServer(db store.Store, statusStore supervisor.AgentStatusStore, controlP
 		localUI:        newLocalUIState(),
 		listenAddr:     listenAddr,
 	}
+}
+
+func (s *Server) WithObservability(mode, sqliteDBPath string) *Server {
+	s.observeService = newObserveService(mode, sqliteDBPath)
+	return s
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -105,6 +111,10 @@ func (s *Server) buildRouter() *gin.Engine {
 	// WebSocket endpoints remain manual and use a path-value adapter.
 	gemGen, _ := protocol.NewGemstoneGenerator(1)
 	if enablePublic {
+		router.GET("/catalog/blueprints/:blueprint_id/dependencies", wrapHTTPWithPathValues(handleGetBlueprintDependencies(s.store), "blueprint_id"))
+		router.GET("/dependencies", wrapHTTP(handleListConfiguredDependencies()))
+		router.GET("/dependencies/provided-type/:provided_type", wrapHTTPWithPathValues(handleListConfiguredDependencies(), "provided_type"))
+		router.GET("/catalog/agents/:class_name/dependencies", wrapHTTPWithPathValues(handleGetCatalogAgentDependenciesByClassName(s.store), "class_name"))
 		router.GET("/ws/guilds/:id/usercomms/:user_id/:user_name", wrapHTTPWithPathValues(gateway.UserCommsHandler(s.msgClient, s.store, gemGen), "id", "user_id", "user_name"))
 		router.GET("/ws/guilds/:id/syscomms/:user_id", wrapHTTPWithPathValues(gateway.SysCommsHandler(s.msgClient, s.store, gemGen), "id", "user_id"))
 
@@ -124,6 +134,11 @@ func (s *Server) buildRouter() *gin.Engine {
 	}
 	if enableUI {
 		s.registerRusticUIRoutes(router, gemGen)
+		router.GET("/rustic/observe/guilds/:guild_id/messages/:msg_id/spans", wrapHTTPWithPathValues(s.handleObserveMessageSpans(), "guild_id", "msg_id"))
+		router.GET("/rustic/catalog/blueprints/:blueprint_id/dependencies", wrapHTTPWithPathValues(handleGetBlueprintDependencies(s.store), "blueprint_id"))
+		router.GET("/rustic/dependencies", wrapHTTP(handleListConfiguredDependencies()))
+		router.GET("/rustic/dependencies/provided-type/:provided_type", wrapHTTPWithPathValues(handleListConfiguredDependencies(), "provided_type"))
+		router.GET("/rustic/catalog/agents/:class_name/dependencies", wrapHTTPWithPathValues(handleGetCatalogAgentDependenciesByClassName(s.store), "class_name"))
 		contract.RegisterHandlersWithOptions(router, s, contract.GinServerOptions{
 			BaseURL: "/rustic",
 			ErrorHandler: func(c *gin.Context, err error, statusCode int) {
@@ -139,6 +154,12 @@ func wrapHTTPWithPathValues(handler http.HandlerFunc, params ...string) gin.Hand
 		for _, p := range params {
 			c.Request.SetPathValue(p, c.Param(p))
 		}
+		handler(c.Writer, c.Request)
+	}
+}
+
+func wrapHTTP(handler http.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		handler(c.Writer, c.Request)
 	}
 }

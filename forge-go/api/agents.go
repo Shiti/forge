@@ -14,13 +14,48 @@ import (
 // AgentRegistryEntry represents a single known agent type in the Forge cluster.
 // For Phase 2d.3 Option A, this is a statically maintained list.
 type AgentRegistryEntry struct {
-	Name               string                   `json:"-"`
-	AgentName          string                   `json:"agent_name"`
-	QualifiedClassName string                   `json:"qualified_class_name"`
-	AgentDoc           string                   `json:"agent_doc"`
-	AgentPropsSchema   map[string]interface{}   `json:"agent_props_schema"`
-	MessageHandlers    map[string]interface{}   `json:"message_handlers"`
-	AgentDependencies  []map[string]interface{} `json:"agent_dependencies"`
+	Name               string                 `json:"-"`
+	AgentName          string                 `json:"agent_name"`
+	QualifiedClassName string                 `json:"qualified_class_name"`
+	AgentDoc           string                 `json:"agent_doc"`
+	AgentPropsSchema   map[string]interface{} `json:"agent_props_schema"`
+	MessageHandlers    map[string]interface{} `json:"message_handlers"`
+	AgentDependencies  []AgentDependencyEntry `json:"agent_dependencies"`
+}
+
+type AgentDependencyEntry struct {
+	DependencyKey string  `json:"dependency_key"`
+	DependencyVar *string `json:"dependency_var,omitempty"`
+	GuildLevel    *bool   `json:"guild_level,omitempty"`
+	OrgLevel      *bool   `json:"org_level,omitempty"`
+	AgentLevel    *bool   `json:"agent_level,omitempty"`
+	VariableName  *string `json:"variable_name,omitempty"`
+	ResolvedType  *string `json:"resolved_type,omitempty"`
+}
+
+type ConfiguredDependencyEntry struct {
+	Key          string                 `json:"key"`
+	ClassName    string                 `json:"class_name"`
+	ProvidedType string                 `json:"provided_type,omitempty"`
+	Properties   map[string]interface{} `json:"properties,omitempty"`
+}
+
+type BlueprintAgentDependencyEntry struct {
+	BindingKey    string                      `json:"binding_key"`
+	DependencyKey string                      `json:"dependency_key"`
+	DependencyVar *string                     `json:"dependency_var,omitempty"`
+	GuildLevel    *bool                       `json:"guild_level,omitempty"`
+	OrgLevel      *bool                       `json:"org_level,omitempty"`
+	AgentLevel    *bool                       `json:"agent_level,omitempty"`
+	VariableName  *string                     `json:"variable_name,omitempty"`
+	ResolvedType  *string                     `json:"resolved_type,omitempty"`
+	Providers     []ConfiguredDependencyEntry `json:"providers"`
+}
+
+type BlueprintAgentDependencySummary struct {
+	AgentName          string                          `json:"agent_name"`
+	QualifiedClassName string                          `json:"qualified_class_name"`
+	Dependencies       []BlueprintAgentDependencyEntry `json:"dependencies"`
 }
 
 var defaultKnownSystemAgents = []AgentRegistryEntry{
@@ -31,7 +66,7 @@ var defaultKnownSystemAgents = []AgentRegistryEntry{
 		AgentDoc:           "Supervisor and Orchestrator for the Guild",
 		AgentPropsSchema:   map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
 		MessageHandlers:    map[string]interface{}{},
-		AgentDependencies:  []map[string]interface{}{},
+		AgentDependencies:  []AgentDependencyEntry{},
 	},
 	{
 		Name:               "UserProxyAgent",
@@ -40,7 +75,7 @@ var defaultKnownSystemAgents = []AgentRegistryEntry{
 		AgentDoc:           "Dynamic per-user agent representing a human user in the guild",
 		AgentPropsSchema:   map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
 		MessageHandlers:    map[string]interface{}{},
-		AgentDependencies:  []map[string]interface{}{},
+		AgentDependencies:  []AgentDependencyEntry{},
 	},
 	{
 		Name:               "SupportAgent",
@@ -49,7 +84,7 @@ var defaultKnownSystemAgents = []AgentRegistryEntry{
 		AgentDoc:           "Standard support agent template",
 		AgentPropsSchema:   map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
 		MessageHandlers:    map[string]interface{}{},
-		AgentDependencies:  []map[string]interface{}{},
+		AgentDependencies:  []AgentDependencyEntry{},
 	},
 	{
 		Name:               "EchoAgent",
@@ -58,7 +93,7 @@ var defaultKnownSystemAgents = []AgentRegistryEntry{
 		AgentDoc:           "An Agent that echoes the received message back to the sender.",
 		AgentPropsSchema:   map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
 		MessageHandlers:    map[string]interface{}{},
-		AgentDependencies:  []map[string]interface{}{},
+		AgentDependencies:  []AgentDependencyEntry{},
 	},
 }
 

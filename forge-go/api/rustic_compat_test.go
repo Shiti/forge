@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -171,4 +172,206 @@ func TestRusticFileRoutes_ProxyStyleRewrite(t *testing.T) {
 	require.Len(t, listResp, 1)
 	require.Equal(t, "hello.txt", listResp[0]["name"])
 	require.Equal(t, "http://proxy.example:3001/rustic/api/guilds/g-rustic-files/files/hello.txt", listResp[0]["url"])
+}
+
+func TestRusticCatalogAgentDependenciesRoute(t *testing.T) {
+	t.Setenv("FORGE_ENABLE_PUBLIC_API", "false")
+	t.Setenv("FORGE_ENABLE_UI_API", "true")
+	t.Setenv("FORGE_IDENTITY_MODE", "local")
+	t.Setenv("FORGE_QUOTA_MODE", "local")
+
+	db, err := store.NewGormStore("sqlite", "file::memory:")
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	depType := "rustic_ai.core.llm.LLM"
+	varName := "llm"
+	agentLevel := true
+	require.NoError(t, db.RegisterAgent(&store.CatalogAgentEntry{
+		QualifiedClassName: "rustic_ai.llm_agent.llm_agent.LLMAgent",
+		AgentName:          "LLMAgent",
+		AgentDoc:           ptrString("LLM agent"),
+		AgentPropsSchema:   store.JSONB{"type": "object"},
+		MessageHandlers:    store.JSONB{},
+		AgentDependencies: store.JSONB{
+			"llm": map[string]any{
+				"dependency_key": "llm",
+				"agent_level":    agentLevel,
+				"variable_name":  varName,
+				"resolved_type":  depType,
+			},
+		},
+	}))
+
+	s := NewServer(db, nil, nil, nil, nil, ":0")
+	router := s.buildRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/rustic/catalog/agents/rustic_ai.llm_agent.llm_agent.LLMAgent/dependencies", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var deps []AgentDependencyEntry
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &deps))
+	require.Len(t, deps, 1)
+	require.Equal(t, "llm", deps[0].DependencyKey)
+	require.NotNil(t, deps[0].ResolvedType)
+	require.Equal(t, depType, *deps[0].ResolvedType)
+	require.NotNil(t, deps[0].VariableName)
+	require.Equal(t, varName, *deps[0].VariableName)
+}
+
+func TestRusticConfiguredDependenciesRoutes(t *testing.T) {
+	t.Setenv("FORGE_ENABLE_PUBLIC_API", "false")
+	t.Setenv("FORGE_ENABLE_UI_API", "true")
+	t.Setenv("FORGE_IDENTITY_MODE", "local")
+	t.Setenv("FORGE_QUOTA_MODE", "local")
+
+	configPath := filepath.Join(t.TempDir(), "agent-dependencies.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+llm_openai:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
+  properties:
+    model: gpt-5.4
+filesystem:
+  class_name: rustic_ai.core.guild.agent_ext.depends.filesystem.FileSystemResolver
+  provided_type: rustic_ai.core.filesystem.FileSystem
+  properties:
+    path_base: /tmp
+`), 0o600))
+	t.Setenv("FORGE_DEPENDENCY_CONFIG", configPath)
+
+	db, err := store.NewGormStore("sqlite", "file::memory:")
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	s := NewServer(db, nil, nil, nil, nil, ":0")
+	router := s.buildRouter()
+
+	t.Run("list all", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/rustic/dependencies", nil)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var deps []ConfiguredDependencyEntry
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &deps))
+		require.Len(t, deps, 2)
+		require.Equal(t, "filesystem", deps[0].Key)
+		require.Equal(t, "llm_openai", deps[1].Key)
+	})
+
+	t.Run("filter by query", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/rustic/dependencies?provided_type=rustic_ai.core.llm.LLM", nil)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var deps []ConfiguredDependencyEntry
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &deps))
+		require.Len(t, deps, 1)
+		require.Equal(t, "llm_openai", deps[0].Key)
+		require.Equal(t, "rustic_ai.core.llm.LLM", deps[0].ProvidedType)
+	})
+
+	t.Run("filter by path", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/rustic/dependencies/provided-type/rustic_ai.core.filesystem.FileSystem", nil)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var deps []ConfiguredDependencyEntry
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &deps))
+		require.Len(t, deps, 1)
+		require.Equal(t, "filesystem", deps[0].Key)
+		require.Equal(t, "rustic_ai.core.filesystem.FileSystem", deps[0].ProvidedType)
+	})
+}
+
+func TestRusticBlueprintDependenciesRoute(t *testing.T) {
+	t.Setenv("FORGE_ENABLE_PUBLIC_API", "false")
+	t.Setenv("FORGE_ENABLE_UI_API", "true")
+	t.Setenv("FORGE_IDENTITY_MODE", "local")
+	t.Setenv("FORGE_QUOTA_MODE", "local")
+
+	configPath := filepath.Join(t.TempDir(), "agent-dependencies.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+llm_openai:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
+  properties:
+    model: gpt-5.4
+llm_gemini:
+  class_name: rustic_ai.litellm.agent_ext.llm.LiteLLMResolver
+  provided_type: rustic_ai.core.llm.LLM
+  properties:
+    model: gemini/gemini-3.1
+`), 0o600))
+	t.Setenv("FORGE_DEPENDENCY_CONFIG", configPath)
+
+	db, err := store.NewGormStore("sqlite", "file::memory:")
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	depType := "rustic_ai.core.llm.LLM"
+	varName := "llm"
+	agentLevel := true
+	require.NoError(t, db.RegisterAgent(&store.CatalogAgentEntry{
+		QualifiedClassName: "rustic_ai.llm_agent.llm_agent.LLMAgent",
+		AgentName:          "LLMAgent",
+		AgentDoc:           ptrString("LLM agent"),
+		AgentPropsSchema:   store.JSONB{"type": "object"},
+		MessageHandlers:    store.JSONB{},
+		AgentDependencies: store.JSONB{
+			"llm": map[string]any{
+				"dependency_key": "llm",
+				"agent_level":    agentLevel,
+				"variable_name":  varName,
+				"resolved_type":  depType,
+			},
+		},
+	}))
+
+	bp, err := db.CreateBlueprint(&store.Blueprint{
+		Name:        "Research App",
+		Description: "Blueprint with LLM dependency",
+		Exposure:    store.ExposurePublic,
+		AuthorID:    "author-1",
+		Spec: store.JSONB{
+			"name":        "Research App",
+			"description": "Blueprint with LLM dependency",
+			"agents": []any{
+				map[string]any{
+					"id":          "research_agent",
+					"name":        "Research Agent",
+					"description": "Answers questions",
+					"class_name":  "rustic_ai.llm_agent.llm_agent.LLMAgent",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	s := NewServer(db, nil, nil, nil, nil, ":0")
+	router := s.buildRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/rustic/catalog/blueprints/"+bp.ID+"/dependencies", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var summaries []BlueprintAgentDependencySummary
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &summaries))
+	require.Len(t, summaries, 1)
+	require.Equal(t, "Research Agent", summaries[0].AgentName)
+	require.Equal(t, "rustic_ai.llm_agent.llm_agent.LLMAgent", summaries[0].QualifiedClassName)
+	require.Len(t, summaries[0].Dependencies, 1)
+	require.Equal(t, "agent:research_agent:llm", summaries[0].Dependencies[0].BindingKey)
+	require.Equal(t, "llm", summaries[0].Dependencies[0].DependencyKey)
+	require.NotNil(t, summaries[0].Dependencies[0].ResolvedType)
+	require.Equal(t, depType, *summaries[0].Dependencies[0].ResolvedType)
+	require.Len(t, summaries[0].Dependencies[0].Providers, 2)
+	require.Equal(t, "llm_gemini", summaries[0].Dependencies[0].Providers[0].Key)
+	require.Equal(t, "llm_openai", summaries[0].Dependencies[0].Providers[1].Key)
 }
