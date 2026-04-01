@@ -98,3 +98,8 @@ func terminateAttachedProcessTree(pid int) error {
 
 	return nil
 }
+
+func processExists(pid int) bool {
+	exists, err := gopsprocess.PidExists(int32(pid))
+	return err == nil && exists
+}

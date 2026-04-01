@@ -2,20 +2,14 @@ package modelfit
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
-	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/rustic-ai/forge/forge-go/protocol"
-	"github.com/shirou/gopsutil/v3/cpu"
-	"github.com/shirou/gopsutil/v3/mem"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,8 +20,83 @@ const (
 	BackendCUDA    Backend = "cuda"
 	BackendMetal   Backend = "metal"
 	BackendROCM    Backend = "rocm"
+	BackendVulkan  Backend = "vulkan"
+	BackendSYCL    Backend = "sycl"
 	BackendUnknown Backend = "unknown"
 )
+
+type DetectionConfidence string
+
+const (
+	DetectionConfidenceUnknown   DetectionConfidence = "unknown"
+	DetectionConfidenceHeuristic DetectionConfidence = "heuristic"
+	DetectionConfidenceStrong    DetectionConfidence = "strong"
+	DetectionConfidenceProbe     DetectionConfidence = "probe"
+)
+
+type DiagnosticReason string
+
+const (
+	ReasonRuntimeBinaryMissing        DiagnosticReason = "runtime_binary_missing"
+	ReasonRuntimeProbeFailed          DiagnosticReason = "runtime_probe_failed"
+	ReasonNoRuntimeDevices            DiagnosticReason = "no_runtime_devices"
+	ReasonNVIDIAPresentRuntimeCPUOnly DiagnosticReason = "nvidia_present_but_runtime_cpu_only"
+	ReasonAMDPresentRuntimeCPUOnly    DiagnosticReason = "amd_detected_but_runtime_cpu_only"
+	ReasonIntelPresentRuntimeCPUOnly  DiagnosticReason = "intel_detected_but_runtime_cpu_only"
+	ReasonAMDDetectedRocmUnavailable  DiagnosticReason = "amd_detected_but_rocm_unavailable"
+	ReasonIntelIntegratedSharedMemory DiagnosticReason = "intel_integrated_shared_memory_only"
+	ReasonHybridGPUPresentOffload     DiagnosticReason = "hybrid_gpu_present_offload_not_usable"
+	ReasonRuntimeDeviceDetected       DiagnosticReason = "runtime_device_detected"
+)
+
+type GPUDevice struct {
+	ID                string             `json:"id"`
+	Vendor            string             `json:"vendor"`
+	Name              string             `json:"name"`
+	BackendCandidates []Backend          `json:"backend_candidates,omitempty"`
+	TotalMemoryBytes  uint64             `json:"total_memory_bytes,omitempty"`
+	Integrated        bool               `json:"integrated"`
+	Discrete          bool               `json:"discrete"`
+	UnifiedMemory     bool               `json:"unified_memory"`
+	RuntimeUsable     bool               `json:"runtime_usable"`
+	RuntimeBackend    Backend            `json:"runtime_backend,omitempty"`
+	ReasonCodes       []DiagnosticReason `json:"reason_codes,omitempty"`
+}
+
+type HardwareProfile struct {
+	TotalRAMBytes     uint64      `json:"total_ram_bytes"`
+	AvailableRAMBytes uint64      `json:"available_ram_bytes"`
+	CPUCores          int         `json:"cpu_cores"`
+	CPUName           string      `json:"cpu_name,omitempty"`
+	UnifiedMemory     bool        `json:"unified_memory"`
+	GPUs              []GPUDevice `json:"gpus"`
+}
+
+type UsableAccelerator struct {
+	ID               string             `json:"id"`
+	Vendor           string             `json:"vendor"`
+	Name             string             `json:"name"`
+	Backend          Backend            `json:"backend"`
+	TotalMemoryBytes uint64             `json:"total_memory_bytes,omitempty"`
+	Integrated       bool               `json:"integrated"`
+	Discrete         bool               `json:"discrete"`
+	UnifiedMemory    bool               `json:"unified_memory"`
+	ReasonCodes      []DiagnosticReason `json:"reason_codes,omitempty"`
+}
+
+type RuntimeCapabilityProfile struct {
+	LlamaBinaryPath    string              `json:"llama_binary_path,omitempty"`
+	BinaryFound        bool                `json:"binary_found"`
+	ProbeCached        bool                `json:"probe_cached"`
+	ProbeSupported     bool                `json:"probe_supported"`
+	RuntimeAvailable   bool                `json:"runtime_available"`
+	SelectedBackend    Backend             `json:"selected_backend"`
+	Confidence         DetectionConfidence `json:"confidence"`
+	UsableAccelerators []UsableAccelerator `json:"usable_accelerators"`
+	ProbeLines         []string            `json:"probe_lines,omitempty"`
+	ReasonCodes        []DiagnosticReason  `json:"reason_codes,omitempty"`
+	CheckedAt          string              `json:"checked_at,omitempty"`
+}
 
 type FitLevel string
 
@@ -39,16 +108,22 @@ const (
 )
 
 type SystemProfile struct {
-	TotalRAMBytes     uint64  `json:"total_ram_bytes"`
-	AvailableRAMBytes uint64  `json:"available_ram_bytes"`
-	CPUCores          int     `json:"cpu_cores"`
-	HasGPU            bool    `json:"has_gpu"`
-	GPUCount          int     `json:"gpu_count"`
-	TotalVRAMBytes    uint64  `json:"total_vram_bytes"`
-	Backend           Backend `json:"backend"`
-	UnifiedMemory     bool    `json:"unified_memory"`
-	CPUName           string  `json:"cpu_name,omitempty"`
-	GPUName           string  `json:"gpu_name,omitempty"`
+	TotalRAMBytes             uint64                   `json:"total_ram_bytes"`
+	AvailableRAMBytes         uint64                   `json:"available_ram_bytes"`
+	CPUCores                  int                      `json:"cpu_cores"`
+	HasGPU                    bool                     `json:"has_gpu"`
+	GPUCount                  int                      `json:"gpu_count"`
+	TotalVRAMBytes            uint64                   `json:"total_vram_bytes"`
+	Backend                   Backend                  `json:"backend"`
+	UnifiedMemory             bool                     `json:"unified_memory"`
+	CPUName                   string                   `json:"cpu_name,omitempty"`
+	GPUName                   string                   `json:"gpu_name,omitempty"`
+	SelectedAcceleratorID     string                   `json:"selected_accelerator_id,omitempty"`
+	RuntimeUsableAcceleration bool                     `json:"runtime_usable_acceleration"`
+	Confidence                DetectionConfidence      `json:"confidence"`
+	ReasonCodes               []DiagnosticReason       `json:"reason_codes,omitempty"`
+	Hardware                  HardwareProfile          `json:"hardware"`
+	Runtime                   RuntimeCapabilityProfile `json:"runtime"`
 }
 
 type ModelProfile struct {
@@ -74,19 +149,24 @@ type ModelProfile struct {
 }
 
 type FitResult struct {
-	ModelID                  string   `json:"model_id"`
-	DependencyKey            string   `json:"dependency_key"`
-	DisplayName              string   `json:"display_name"`
-	ModelName                string   `json:"model_name"`
-	UseCaseTags              []string `json:"use_case_tags"`
-	FitLevel                 FitLevel `json:"fit_level"`
-	Runnable                 bool     `json:"runnable"`
-	EstimatedMemoryBytes     uint64   `json:"estimated_memory_bytes"`
-	AvailableMemoryBytes     uint64   `json:"available_memory_bytes"`
-	UtilizationPct           float64  `json:"utilization_pct"`
-	EstimatedTokensPerSecond *float64 `json:"estimated_tokens_per_second,omitempty"`
-	Score                    float64  `json:"score"`
-	Explanations             []string `json:"explanations"`
+	ModelID                   string              `json:"model_id"`
+	DependencyKey             string              `json:"dependency_key"`
+	DisplayName               string              `json:"display_name"`
+	ModelName                 string              `json:"model_name"`
+	UseCaseTags               []string            `json:"use_case_tags"`
+	FitLevel                  FitLevel            `json:"fit_level"`
+	Runnable                  bool                `json:"runnable"`
+	EstimatedMemoryBytes      uint64              `json:"estimated_memory_bytes"`
+	AvailableMemoryBytes      uint64              `json:"available_memory_bytes"`
+	UtilizationPct            float64             `json:"utilization_pct"`
+	EstimatedTokensPerSecond  *float64            `json:"estimated_tokens_per_second,omitempty"`
+	Score                     float64             `json:"score"`
+	SelectedBackend           Backend             `json:"selected_backend"`
+	SelectedAcceleratorID     string              `json:"selected_accelerator_id,omitempty"`
+	RuntimeUsableAcceleration bool                `json:"runtime_usable_acceleration"`
+	Confidence                DetectionConfidence `json:"confidence"`
+	ReasonCodes               []DiagnosticReason  `json:"reason_codes,omitempty"`
+	Explanations              []string            `json:"explanations"`
 }
 
 type QueryOptions struct {
@@ -101,20 +181,13 @@ type Profiler interface {
 
 type DefaultProfiler struct{}
 
-func (DefaultProfiler) Profile(context.Context) (SystemProfile, error) {
-	return DetectSystemProfile()
+func (DefaultProfiler) Profile(ctx context.Context) (SystemProfile, error) {
+	return detectSystemProfile(ctx)
 }
 
 type catalogFile struct {
 	Models []ModelProfile `yaml:"models"`
 }
-
-var (
-	virtualMemoryFn   = mem.VirtualMemory
-	cpuInfoFn         = cpu.Info
-	nvidiaSMIFunc     = defaultNvidiaSMI
-	macGPUProfileFunc = defaultMacGPUProfile
-)
 
 func LoadProfiles(catalogPath, dependencyConfigPath string) ([]ModelProfile, error) {
 	fileData, err := os.ReadFile(catalogPath)
@@ -194,60 +267,33 @@ func Recommend(profiles []ModelProfile, system SystemProfile, opts QueryOptions)
 	return results
 }
 
-func DetectSystemProfile() (SystemProfile, error) {
-	vm, err := virtualMemoryFn()
-	if err != nil {
-		return SystemProfile{}, fmt.Errorf("detect memory: %w", err)
-	}
-	profile := SystemProfile{
-		TotalRAMBytes:     vm.Total,
-		AvailableRAMBytes: vm.Available,
-		CPUCores:          runtime.NumCPU(),
-		Backend:           BackendCPU,
-	}
-	if info, err := cpuInfoFn(); err == nil && len(info) > 0 {
-		profile.CPUName = strings.TrimSpace(info[0].ModelName)
-	}
-
-	switch runtime.GOOS {
-	case "darwin":
-		if runtime.GOARCH == "arm64" {
-			profile.HasGPU = true
-			profile.GPUCount = 1
-			profile.Backend = BackendMetal
-			profile.UnifiedMemory = true
-		}
-		if name, count, err := macGPUProfileFunc(); err == nil {
-			if strings.TrimSpace(name) != "" {
-				profile.GPUName = name
-			}
-			if count > 0 {
-				profile.GPUCount = count
-				profile.HasGPU = true
-			}
-		}
-	default:
-		if gpuName, count, vramBytes, err := nvidiaSMIFunc(); err == nil && count > 0 {
-			profile.HasGPU = true
-			profile.GPUCount = count
-			profile.TotalVRAMBytes = vramBytes
-			profile.GPUName = gpuName
-			profile.Backend = BackendCUDA
-		}
-	}
-
-	return profile, nil
-}
-
 func evaluate(profile ModelProfile, system SystemProfile) FitResult {
 	var required uint64
 	var available uint64
 	reasons := []string{}
+	reasonCodes := append([]DiagnosticReason(nil), system.ReasonCodes...)
+	selectedBackend := system.Backend
+	selectedAcceleratorID := system.SelectedAcceleratorID
 
-	if profile.PreferredDiscreteGPU && system.HasGPU && !system.UnifiedMemory && system.TotalVRAMBytes > 0 {
+	if selected := selectAccelerator(system, profile); selected != nil {
+		selectedBackend = selected.Backend
+		selectedAcceleratorID = selected.ID
+		if selected.UnifiedMemory || selected.Integrated {
+			required = maxUint64(profile.MinRAMBytes, profile.EstimatedMemoryBytes)
+			available = system.AvailableRAMBytes
+			reasons = append(reasons, "Using runtime-usable unified memory accelerator")
+		} else {
+			required = maxUint64(profile.PreferredVRAMBytes, profile.EstimatedMemoryBytes)
+			if required == 0 {
+				required = profile.EstimatedMemoryBytes
+			}
+			available = selected.TotalMemoryBytes
+			reasons = append(reasons, "Using runtime-usable accelerator memory pool")
+		}
+	} else if profile.PreferredDiscreteGPU && system.HasGPU && !system.UnifiedMemory && system.TotalVRAMBytes > 0 {
 		required = maxUint64(profile.PreferredVRAMBytes, profile.EstimatedMemoryBytes)
-		available = system.TotalVRAMBytes
-		reasons = append(reasons, "Using discrete GPU memory pool")
+		available = system.AvailableRAMBytes
+		reasons = append(reasons, "No runtime-usable accelerator detected; using system RAM")
 	} else if system.UnifiedMemory {
 		required = maxUint64(profile.MinRAMBytes, profile.EstimatedMemoryBytes)
 		available = system.AvailableRAMBytes
@@ -276,9 +322,10 @@ func evaluate(profile ModelProfile, system SystemProfile) FitResult {
 	case FitTooTight:
 		reasons = append(reasons, "Exceeds available memory")
 	}
-	if !system.HasGPU && profile.PreferredDiscreteGPU {
-		reasons = append(reasons, "Discrete GPU preferred, but no GPU detected")
+	if !system.RuntimeUsableAcceleration && profile.PreferredDiscreteGPU {
+		reasons = append(reasons, "Discrete GPU preferred, but no runtime-usable accelerator detected")
 	}
+	reasons = append(reasons, reasonExplanations(reasonCodes)...)
 
 	var tps *float64
 	if estimate := estimateTPS(profile, system); estimate > 0 {
@@ -286,19 +333,24 @@ func evaluate(profile ModelProfile, system SystemProfile) FitResult {
 	}
 
 	return FitResult{
-		ModelID:                  profile.ID,
-		DependencyKey:            profile.DependencyKey,
-		DisplayName:              profile.DisplayName,
-		ModelName:                profile.ModelName,
-		UseCaseTags:              append([]string(nil), profile.UseCaseTags...),
-		FitLevel:                 fit,
-		Runnable:                 fit != FitTooTight,
-		EstimatedMemoryBytes:     required,
-		AvailableMemoryBytes:     available,
-		UtilizationPct:           round2(utilization),
-		EstimatedTokensPerSecond: tps,
-		Score:                    score(profile, fit, utilization, tps),
-		Explanations:             reasons,
+		ModelID:                   profile.ID,
+		DependencyKey:             profile.DependencyKey,
+		DisplayName:               profile.DisplayName,
+		ModelName:                 profile.ModelName,
+		UseCaseTags:               append([]string(nil), profile.UseCaseTags...),
+		FitLevel:                  fit,
+		Runnable:                  fit != FitTooTight,
+		EstimatedMemoryBytes:      required,
+		AvailableMemoryBytes:      available,
+		UtilizationPct:            round2(utilization),
+		EstimatedTokensPerSecond:  tps,
+		Score:                     score(profile, fit, utilization, tps),
+		SelectedBackend:           selectedBackend,
+		SelectedAcceleratorID:     selectedAcceleratorID,
+		RuntimeUsableAcceleration: system.RuntimeUsableAcceleration,
+		Confidence:                system.Confidence,
+		ReasonCodes:               normalizeReasonCodes(reasonCodes),
+		Explanations:              reasons,
 	}
 }
 
@@ -321,9 +373,9 @@ func classify(utilization float64, available bool) FitLevel {
 func estimateTPS(profile ModelProfile, system SystemProfile) float64 {
 	if profile.TokenSpeedHint > 0 {
 		switch {
-		case system.HasGPU && !system.UnifiedMemory:
+		case system.RuntimeUsableAcceleration && !system.UnifiedMemory:
 			return round2(profile.TokenSpeedHint)
-		case system.UnifiedMemory:
+		case system.RuntimeUsableAcceleration && system.UnifiedMemory:
 			return round2(profile.TokenSpeedHint * 0.7)
 		default:
 			return round2(profile.TokenSpeedHint * 0.2)
@@ -331,9 +383,9 @@ func estimateTPS(profile ModelProfile, system SystemProfile) float64 {
 	}
 	base := 0.0
 	switch {
-	case system.HasGPU && !system.UnifiedMemory:
+	case system.RuntimeUsableAcceleration && !system.UnifiedMemory:
 		base = 120
-	case system.UnifiedMemory:
+	case system.RuntimeUsableAcceleration && system.UnifiedMemory:
 		base = 75
 	default:
 		base = 18
@@ -384,6 +436,51 @@ func compareResults(a, b FitResult) int {
 	return strings.Compare(a.DependencyKey, b.DependencyKey)
 }
 
+func selectAccelerator(system SystemProfile, profile ModelProfile) *UsableAccelerator {
+	if len(system.Runtime.UsableAccelerators) == 0 {
+		return nil
+	}
+	if profile.PreferredDiscreteGPU {
+		for _, accel := range system.Runtime.UsableAccelerators {
+			if accel.Discrete {
+				selected := accel
+				return &selected
+			}
+		}
+	}
+	selected := system.Runtime.UsableAccelerators[0]
+	return &selected
+}
+
+func reasonExplanations(reasonCodes []DiagnosticReason) []string {
+	out := make([]string, 0, len(reasonCodes))
+	for _, reason := range normalizeReasonCodes(reasonCodes) {
+		switch reason {
+		case ReasonRuntimeBinaryMissing:
+			out = append(out, "Local llama.cpp runtime binary was not found")
+		case ReasonRuntimeProbeFailed:
+			out = append(out, "Runtime capability probe failed; falling back to CPU assumptions")
+		case ReasonNoRuntimeDevices:
+			out = append(out, "No runtime-usable accelerator devices were reported")
+		case ReasonNVIDIAPresentRuntimeCPUOnly:
+			out = append(out, "NVIDIA GPU detected, but runtime is currently CPU-only")
+		case ReasonAMDPresentRuntimeCPUOnly:
+			out = append(out, "AMD GPU detected, but runtime is currently CPU-only")
+		case ReasonIntelPresentRuntimeCPUOnly:
+			out = append(out, "Intel GPU detected, but runtime is currently CPU-only")
+		case ReasonAMDDetectedRocmUnavailable:
+			out = append(out, "AMD GPU detected, but ROCm/runtime acceleration is unavailable")
+		case ReasonIntelIntegratedSharedMemory:
+			out = append(out, "Intel integrated graphics uses shared system memory")
+		case ReasonHybridGPUPresentOffload:
+			out = append(out, "Hybrid GPU setup detected, but offload runtime is not currently usable")
+		case ReasonRuntimeDeviceDetected:
+			out = append(out, "Runtime probe detected accelerator devices")
+		}
+	}
+	return out
+}
+
 func fitWeight(level FitLevel) int {
 	switch level {
 	case FitPerfect:
@@ -411,59 +508,6 @@ func loadDependencySpecs(path string) (map[string]protocol.DependencySpec, error
 		specs[key] = spec
 	}
 	return specs, nil
-}
-
-func defaultNvidiaSMI() (string, int, uint64, error) {
-	cmd := exec.Command("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits")
-	out, err := cmd.Output()
-	if err != nil {
-		return "", 0, 0, err
-	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
-		return "", 0, 0, errors.New("no nvidia gpus found")
-	}
-	var total uint64
-	var name string
-	count := 0
-	for _, line := range lines {
-		parts := strings.Split(line, ",")
-		if len(parts) < 2 {
-			continue
-		}
-		count++
-		if name == "" {
-			name = strings.TrimSpace(parts[0])
-		}
-		memMB, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
-		if err != nil {
-			continue
-		}
-		total += memMB * 1024 * 1024
-	}
-	if count == 0 {
-		return "", 0, 0, errors.New("no parseable nvidia gpu rows")
-	}
-	return name, count, total, nil
-}
-
-func defaultMacGPUProfile() (string, int, error) {
-	cmd := exec.Command("system_profiler", "SPDisplaysDataType", "-json")
-	out, err := cmd.Output()
-	if err != nil {
-		return "", 0, err
-	}
-	var payload struct {
-		Displays []map[string]any `json:"SPDisplaysDataType"`
-	}
-	if err := json.Unmarshal(out, &payload); err != nil {
-		return "", 0, err
-	}
-	if len(payload.Displays) == 0 {
-		return "", 0, errors.New("no mac gpu devices")
-	}
-	name, _ := payload.Displays[0]["sppci_model"].(string)
-	return strings.TrimSpace(name), len(payload.Displays), nil
 }
 
 func normalizeStrings(items []string) []string {

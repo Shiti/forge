@@ -115,3 +115,54 @@ func TestRusticModelFitRouteRejectsInvalidLimit(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.Contains(t, rr.Body.String(), "invalid limit")
 }
+
+func TestRusticModelFitCapabilitiesRouteReturnsSystemProfile(t *testing.T) {
+	t.Setenv("FORGE_ENABLE_PUBLIC_API", "false")
+	t.Setenv("FORGE_ENABLE_UI_API", "true")
+	t.Setenv("FORGE_IDENTITY_MODE", "local")
+	t.Setenv("FORGE_QUOTA_MODE", "local")
+
+	s := NewServer(nil, nil, nil, nil, nil, ":0").WithModelFit(
+		"",
+		"",
+		staticProfiler{profile: modelfit.SystemProfile{
+			TotalRAMBytes:             32 * 1024 * 1024 * 1024,
+			AvailableRAMBytes:         24 * 1024 * 1024 * 1024,
+			CPUCores:                  12,
+			Backend:                   modelfit.BackendCUDA,
+			RuntimeUsableAcceleration: true,
+			SelectedAcceleratorID:     "nvidia-0",
+			Confidence:                modelfit.DetectionConfidenceProbe,
+			ReasonCodes:               []modelfit.DiagnosticReason{modelfit.ReasonRuntimeDeviceDetected},
+			Runtime: modelfit.RuntimeCapabilityProfile{
+				RuntimeAvailable: true,
+				SelectedBackend:  modelfit.BackendCUDA,
+				Confidence:       modelfit.DetectionConfidenceProbe,
+				UsableAccelerators: []modelfit.UsableAccelerator{
+					{
+						ID:               "nvidia-0",
+						Vendor:           "nvidia",
+						Name:             "RTX 4090",
+						Backend:          modelfit.BackendCUDA,
+						Discrete:         true,
+						TotalMemoryBytes: 24 * 1024 * 1024 * 1024,
+					},
+				},
+			},
+		}},
+	)
+	router := s.buildRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/rustic/modelfit/capabilities", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var system modelfit.SystemProfile
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &system))
+	require.True(t, system.RuntimeUsableAcceleration)
+	require.Equal(t, modelfit.BackendCUDA, system.Backend)
+	require.Equal(t, "nvidia-0", system.SelectedAcceleratorID)
+	require.Contains(t, system.ReasonCodes, modelfit.ReasonRuntimeDeviceDetected)
+	require.Len(t, system.Runtime.UsableAccelerators, 1)
+}

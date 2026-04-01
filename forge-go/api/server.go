@@ -152,6 +152,7 @@ func (s *Server) buildRouter() *gin.Engine {
 	if enableUI {
 		s.registerRusticUIRoutes(router, gemGen)
 		router.GET("/rustic/modelfit/local-models", wrapHTTP(s.handleListLocalModelFits()))
+		router.GET("/rustic/modelfit/capabilities", wrapHTTP(s.handleGetModelFitCapabilities()))
 		router.GET("/rustic/observe/guilds/:guild_id/messages/:msg_id/spans", wrapHTTPWithPathValues(s.handleObserveMessageSpans(), "guild_id", "msg_id"))
 		router.GET("/rustic/catalog/blueprints/:blueprint_id/dependencies", wrapHTTPWithPathValues(handleGetBlueprintDependencies(s.store), "blueprint_id"))
 		router.GET("/rustic/dependencies", wrapHTTP(handleListConfiguredDependencies()))

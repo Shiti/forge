@@ -169,7 +169,106 @@ func TestRecommendRanksAndFiltersLocalModels(t *testing.T) {
 	require.Equal(t, "llm_local_large", all[2].DependencyKey)
 	require.False(t, all[2].Runnable)
 	require.Equal(t, FitTooTight, all[2].FitLevel)
-	require.Contains(t, all[2].Explanations, "Discrete GPU preferred, but no GPU detected")
+	require.Contains(t, all[2].Explanations, "Discrete GPU preferred, but no runtime-usable accelerator detected")
+}
+
+func TestRecommendUsesRuntimeUsableAcceleratorAndDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	profiles := []ModelProfile{
+		{
+			ID:                   "large",
+			DisplayName:          "Large",
+			DependencyKey:        "llm_local_large",
+			ModelName:            "openai/rustic/large",
+			ParameterCountB:      7,
+			ContextLength:        16384,
+			MinRAMBytes:          8 * 1024 * 1024 * 1024,
+			EstimatedMemoryBytes: 8 * 1024 * 1024 * 1024,
+			PreferredVRAMBytes:   6 * 1024 * 1024 * 1024,
+			PreferredDiscreteGPU: true,
+			QualityRank:          1,
+			TokenSpeedHint:       20,
+		},
+	}
+	system := SystemProfile{
+		TotalRAMBytes:             16 * 1024 * 1024 * 1024,
+		AvailableRAMBytes:         8 * 1024 * 1024 * 1024,
+		CPUCores:                  8,
+		HasGPU:                    true,
+		GPUCount:                  1,
+		Backend:                   BackendCUDA,
+		RuntimeUsableAcceleration: true,
+		SelectedAcceleratorID:     "nvidia-0",
+		Confidence:                DetectionConfidenceProbe,
+		ReasonCodes:               []DiagnosticReason{ReasonRuntimeDeviceDetected},
+		Runtime: RuntimeCapabilityProfile{
+			RuntimeAvailable: true,
+			SelectedBackend:  BackendCUDA,
+			Confidence:       DetectionConfidenceProbe,
+			UsableAccelerators: []UsableAccelerator{
+				{
+					ID:               "nvidia-0",
+					Vendor:           "nvidia",
+					Name:             "RTX",
+					Backend:          BackendCUDA,
+					TotalMemoryBytes: 12 * 1024 * 1024 * 1024,
+					Discrete:         true,
+				},
+			},
+		},
+	}
+
+	results := Recommend(profiles, system, QueryOptions{})
+	require.Len(t, results, 1)
+	require.Equal(t, BackendCUDA, results[0].SelectedBackend)
+	require.Equal(t, "nvidia-0", results[0].SelectedAcceleratorID)
+	require.True(t, results[0].RuntimeUsableAcceleration)
+	require.Equal(t, uint64(12*1024*1024*1024), results[0].AvailableMemoryBytes)
+	require.Contains(t, results[0].Explanations, "Using runtime-usable accelerator memory pool")
+	require.Contains(t, results[0].Explanations, "Runtime probe detected accelerator devices")
+}
+
+func TestRecommendTreatsHybridNVIDIAWithoutRuntimeAsCPUOnly(t *testing.T) {
+	t.Parallel()
+
+	profiles := []ModelProfile{
+		{
+			ID:                   "large",
+			DisplayName:          "Large",
+			DependencyKey:        "llm_local_large",
+			ModelName:            "openai/rustic/large",
+			ParameterCountB:      7,
+			ContextLength:        16384,
+			MinRAMBytes:          8 * 1024 * 1024 * 1024,
+			EstimatedMemoryBytes: 8 * 1024 * 1024 * 1024,
+			PreferredVRAMBytes:   6 * 1024 * 1024 * 1024,
+			PreferredDiscreteGPU: true,
+			QualityRank:          1,
+		},
+	}
+	system := SystemProfile{
+		TotalRAMBytes:             16 * 1024 * 1024 * 1024,
+		AvailableRAMBytes:         8 * 1024 * 1024 * 1024,
+		CPUCores:                  8,
+		HasGPU:                    true,
+		GPUCount:                  2,
+		Backend:                   BackendCPU,
+		RuntimeUsableAcceleration: false,
+		Confidence:                DetectionConfidenceHeuristic,
+		ReasonCodes: []DiagnosticReason{
+			ReasonHybridGPUPresentOffload,
+			ReasonNVIDIAPresentRuntimeCPUOnly,
+		},
+	}
+
+	results := Recommend(profiles, system, QueryOptions{})
+	require.Len(t, results, 1)
+	require.Equal(t, BackendCPU, results[0].SelectedBackend)
+	require.False(t, results[0].RuntimeUsableAcceleration)
+	require.Contains(t, results[0].Explanations, "NVIDIA GPU detected, but runtime is currently CPU-only")
+	require.Contains(t, results[0].Explanations, "Hybrid GPU setup detected, but offload runtime is not currently usable")
+	require.Contains(t, results[0].Explanations, "Discrete GPU preferred, but no runtime-usable accelerator detected")
 }
 
 func TestClassifyBoundaries(t *testing.T) {

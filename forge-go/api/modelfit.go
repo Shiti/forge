@@ -59,6 +59,22 @@ func (s *Server) handleListLocalModelFits() http.HandlerFunc {
 	}
 }
 
+func (s *Server) handleGetModelFitCapabilities() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		svc := s.modelFit
+		if svc == nil {
+			svc = newModelFitService(forgepath.LocalModelCatalogPath(), forgepath.DependencyConfigPath(), modelfit.DefaultProfiler{})
+		}
+
+		system, err := svc.profiler.Profile(r.Context())
+		if err != nil {
+			ReplyError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		ReplyJSON(w, http.StatusOK, system)
+	}
+}
+
 func parseBoolQuery(raw string) bool {
 	switch strings.TrimSpace(strings.ToLower(raw)) {
 	case "1", "true", "yes", "y", "on":
