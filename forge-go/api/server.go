@@ -14,6 +14,7 @@ import (
 	"github.com/rustic-ai/forge/forge-go/gateway"
 	"github.com/rustic-ai/forge/forge-go/guild/store"
 	"github.com/rustic-ai/forge/forge-go/infraevents"
+	"github.com/rustic-ai/forge/forge-go/keychain"
 	"github.com/rustic-ai/forge/forge-go/messaging"
 	"github.com/rustic-ai/forge/forge-go/modelfit"
 	"github.com/rustic-ai/forge/forge-go/oauth"
@@ -54,16 +55,30 @@ func NewServer(db store.Store, statusStore supervisor.AgentStatusStore, controlP
 		localUI:        newLocalUIState(),
 		listenAddr:     listenAddr,
 	}
-	if cfg, err := oauth.LoadProvidersConfig(forgepath.OAuthProvidersConfigPath()); err != nil {
-		fmt.Printf("WARN: failed to load OAuth providers config: %v\n", err)
-	} else if len(cfg.Providers) > 0 {
-		store, err := oauth.NewTokenStore(os.Getenv("FORGE_OAUTH_TOKEN_STORE"))
-		if err != nil {
-			fmt.Printf("WARN: %v; falling back to in-memory token store\n", err)
-			store, _ = oauth.NewTokenStore("memory")
-		}
-		s.oauthManager = oauth.NewManagerWithStore(cfg, store)
+	return s
+}
+
+// WithOAuth initialises OAuth support. kind selects the token store backend
+// ("memory" or "keychain"); if empty, FORGE_OAUTH_TOKEN_STORE is consulted.
+func (s *Server) WithOAuth(kind string) *Server {
+	if kind == "" {
+		kind = os.Getenv("FORGE_OAUTH_TOKEN_STORE")
 	}
+	cfg, err := oauth.LoadProvidersConfig(forgepath.OAuthProvidersConfigPath())
+	if err != nil {
+		fmt.Printf("WARN: failed to load OAuth providers config: %v\n", err)
+		return s
+	}
+	if len(cfg.Providers) == 0 {
+		return s
+	}
+	store, err := oauth.NewTokenStore(kind)
+	if err != nil {
+		fmt.Printf("WARN: %v; falling back to in-memory token store\n", err)
+		store, _ = oauth.NewTokenStore("memory")
+	}
+	s.oauthManager = oauth.NewManagerWithStore(cfg, store)
+	keychain.SetOAuthManager(s.oauthManager)
 	return s
 }
 

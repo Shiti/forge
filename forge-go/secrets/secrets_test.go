@@ -175,3 +175,28 @@ func TestDefaultProvider_PreferenceOrder(t *testing.T) {
 		t.Fatalf("Expected env_value to override dotenv and file, got %s", val)
 	}
 }
+
+func TestSecretProvider_CustomService(t *testing.T) {
+	keyring.MockInit()
+
+	const customService = "my-custom-app"
+	if err := keyring.Set(customService, "CUSTOM_KEY", "custom_value"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	p := NewSecretProviderWithService(customService)
+	val, err := p.Resolve(context.Background(), "CUSTOM_KEY")
+	if err != nil {
+		t.Fatalf("expected custom service secret, got error: %v", err)
+	}
+	if val != "custom_value" {
+		t.Errorf("expected custom_value, got %s", val)
+	}
+
+	// Default service should not find it
+	defaultP := NewSecretProvider()
+	_, err = defaultP.Resolve(context.Background(), "CUSTOM_KEY")
+	if !errors.Is(err, secrets.ErrSecretNotFound) {
+		t.Errorf("expected ErrSecretNotFound on default service, got %v", err)
+	}
+}

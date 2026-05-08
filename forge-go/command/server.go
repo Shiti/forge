@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	serverAppNamespace        string
 	serverDB                  string
 	serverRedis               string
 	serverNATS                string
@@ -41,9 +42,11 @@ var (
 	serverTelemetrySQLiteBin  string
 	serverTelemetrySQLiteDB   string
 	serverTelemetrySQLitePort int
+	serverOAuthTokenStore     string
 )
 
 func init() {
+	ServerCmd.Flags().StringVar(&serverAppNamespace, "app-namespace", "forge", "Application namespace for keychain and path isolation")
 	ServerCmd.Flags().StringVar(&serverDB, "db", "", "Database DSN (default: sqlite://<forge-home>/data/forge.db)")
 	ServerCmd.Flags().StringVar(&serverRedis, "redis", "", "Redis URL (default: embedded miniredis)")
 	ServerCmd.Flags().StringVar(&serverNATS, "nats", "", "NATS URL for data-plane messaging (e.g. nats://localhost:4222); omit to use Redis")
@@ -72,6 +75,7 @@ func init() {
 	ServerCmd.Flags().StringVar(&serverTelemetrySQLiteBin, "otel-sqlite-binary", "", "Path to sqlite-otel binary for desktop_sqlite mode")
 	ServerCmd.Flags().StringVar(&serverTelemetrySQLiteDB, "otel-sqlite-db-path", "", "Path to sqlite-otel SQLite database file")
 	ServerCmd.Flags().IntVar(&serverTelemetrySQLitePort, "otel-sqlite-port", 4318, "Port for sqlite-otel OTLP/HTTP listener")
+	ServerCmd.Flags().StringVar(&serverOAuthTokenStore, "oauth-token-store", "", `OAuth token store backend: "memory" (default) or "keychain"`)
 
 	RootCmd.AddCommand(ServerCmd)
 }
@@ -84,6 +88,10 @@ var ServerCmd = &cobra.Command{
 		out := os.Stdout
 		l := logging.NewLogger(out, logLevel)
 		logging.SetGlobalLogger(l)
+
+		if serverAppNamespace != "" {
+			forgepath.SetAppNamespace(serverAppNamespace)
+		}
 
 		db := serverDB
 		if db == "" {
@@ -115,6 +123,7 @@ var ServerCmd = &cobra.Command{
 			ClientDefaultTransport:  serverClientTransport,
 			ClientZMQBridgeMode:     serverClientZMQBridgeMode,
 			ClientAttachProcessTree: serverClientAttachTree,
+			OAuthTokenStore:         serverOAuthTokenStore,
 			StateStore:              serverStateStore,
 			TelemetryEnabled:        serverTelemetryEnabled,
 			TelemetryMode:           serverTelemetryMode,

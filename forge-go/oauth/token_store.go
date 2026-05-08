@@ -15,15 +15,18 @@ type TokenStore interface {
 	LoadAllForUser(userID string) map[string]*tokenEntry
 }
 
-// NewTokenStore creates a TokenStore by name. Currently only "memory" (the
-// default) is supported. Future backends (e.g. "keychain", "encrypted-db")
-// add a case here.
+// NewTokenStore creates a TokenStore by name. Supported backends:
+//   - "memory" (default): in-process store, tokens lost on restart.
+//   - "keychain": OS keychain (macOS Keychain, Windows Credential Manager,
+//     Linux Secret Service). Set FORGE_OAUTH_TOKEN_STORE=keychain to activate.
 func NewTokenStore(kind string) (TokenStore, error) {
 	switch kind {
 	case "", "memory":
 		return NewInMemoryTokenStore(), nil
+	case "keychain":
+		return NewKeychainTokenStore(), nil
 	default:
-		return nil, fmt.Errorf("unknown oauth token store %q; supported: memory", kind)
+		return nil, fmt.Errorf("unknown oauth token store %q; supported: memory, keychain", kind)
 	}
 }
 
