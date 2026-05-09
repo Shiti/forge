@@ -32,12 +32,12 @@ func TestSecretProvider_OAuthToken(t *testing.T) {
 	keyring.MockInit()
 
 	mgr := oauth.NewManager(&oauth.ProvidersConfig{})
-	mgr.SeedToken("user1", "github", "ghp_test456")
+	mgr.SeedToken("org1", "github", "ghp_test456")
 	SetOAuthManager(mgr)
 	t.Cleanup(func() { SetOAuthManager(nil) })
 
 	p := NewSecretProvider()
-	val, err := p.Resolve(context.Background(), "oauth:user1|github")
+	val, err := p.Resolve(context.Background(), "oauth:org1|github")
 	if err != nil {
 		t.Fatalf("expected OAuth token, got error: %v", err)
 	}

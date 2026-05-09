@@ -6,12 +6,12 @@ import (
 
 const prefix = "oauth:"
 
-func StoreKey(userID, providerID string) string {
-	return prefix + userID + "|" + providerID
+func StoreKey(orgID, providerID string) string {
+	return prefix + orgID + "|" + providerID
 }
 
-// ParseOAuthKey parses an "oauth:userID|providerID" key. Returns ok=false for non-OAuth keys.
-func ParseOAuthKey(key string) (userID, providerID string, ok bool) {
+// ParseOAuthKey parses an "oauth:orgID|providerID" key. Returns ok=false for non-OAuth keys.
+func ParseOAuthKey(key string) (orgID, providerID string, ok bool) {
 	rest, found := strings.CutPrefix(key, prefix)
 	if !found {
 		return "", "", false

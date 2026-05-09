@@ -59,8 +59,8 @@ func fromStoredEntry(s *storedEntry) *tokenEntry {
 	}
 }
 
-func keychainIndexAccount(userID string) string {
-	return userID + "|__index__"
+func keychainIndexAccount(orgID string) string {
+	return orgID + "|__index__"
 }
 
 // KeychainTokenStore persists OAuth tokens in the OS keychain (macOS Keychain,
@@ -79,19 +79,19 @@ func NewKeychainTokenStoreWithService(service string) *KeychainTokenStore {
 	return &KeychainTokenStore{service: service}
 }
 
-func (s *KeychainTokenStore) Save(userID, providerID string, entry *tokenEntry) error {
+func (s *KeychainTokenStore) Save(orgID, providerID string, entry *tokenEntry) error {
 	data, err := json.Marshal(toStoredEntry(entry))
 	if err != nil {
 		return fmt.Errorf("marshaling token: %w", err)
 	}
-	if err := keyring.Set(s.service, StoreKey(userID, providerID), string(data)); err != nil {
+	if err := keyring.Set(s.service, StoreKey(orgID, providerID), string(data)); err != nil {
 		return fmt.Errorf("saving to keychain: %w", err)
 	}
-	return s.addToIndex(userID, providerID)
+	return s.addToIndex(orgID, providerID)
 }
 
-func (s *KeychainTokenStore) Load(userID, providerID string) (*tokenEntry, bool) {
-	data, err := keyring.Get(s.service, StoreKey(userID, providerID))
+func (s *KeychainTokenStore) Load(orgID, providerID string) (*tokenEntry, bool) {
+	data, err := keyring.Get(s.service, StoreKey(orgID, providerID))
 	if err != nil {
 		return nil, false
 	}
@@ -102,54 +102,54 @@ func (s *KeychainTokenStore) Load(userID, providerID string) (*tokenEntry, bool)
 	return fromStoredEntry(&se), true
 }
 
-func (s *KeychainTokenStore) Delete(userID, providerID string) bool {
-	if err := keyring.Delete(s.service, StoreKey(userID, providerID)); err != nil {
+func (s *KeychainTokenStore) Delete(orgID, providerID string) bool {
+	if err := keyring.Delete(s.service, StoreKey(orgID, providerID)); err != nil {
 		return false
 	}
-	_ = s.removeFromIndex(userID, providerID)
+	_ = s.removeFromIndex(orgID, providerID)
 	return true
 }
 
-func (s *KeychainTokenStore) LoadAllForUser(userID string) map[string]*tokenEntry {
-	providers := s.readIndex(userID)
+func (s *KeychainTokenStore) LoadAllForOrg(orgID string) map[string]*tokenEntry {
+	providers := s.readIndex(orgID)
 	out := make(map[string]*tokenEntry, len(providers))
 	for _, pid := range providers {
-		if e, ok := s.Load(userID, pid); ok {
+		if e, ok := s.Load(orgID, pid); ok {
 			out[pid] = e
 		}
 	}
 	return out
 }
 
-func (s *KeychainTokenStore) readIndex(userID string) []string {
-	data, err := keyring.Get(s.service, keychainIndexAccount(userID))
+func (s *KeychainTokenStore) readIndex(orgID string) []string {
+	data, err := keyring.Get(s.service, keychainIndexAccount(orgID))
 	if err != nil || data == "" {
 		return nil
 	}
 	return strings.Split(data, "\n")
 }
 
-func (s *KeychainTokenStore) writeIndex(userID string, providers []string) error {
-	return keyring.Set(s.service, keychainIndexAccount(userID), strings.Join(providers, "\n"))
+func (s *KeychainTokenStore) writeIndex(orgID string, providers []string) error {
+	return keyring.Set(s.service, keychainIndexAccount(orgID), strings.Join(providers, "\n"))
 }
 
-func (s *KeychainTokenStore) addToIndex(userID, providerID string) error {
-	existing := s.readIndex(userID)
+func (s *KeychainTokenStore) addToIndex(orgID, providerID string) error {
+	existing := s.readIndex(orgID)
 	for _, p := range existing {
 		if p == providerID {
 			return nil
 		}
 	}
-	return s.writeIndex(userID, append(existing, providerID))
+	return s.writeIndex(orgID, append(existing, providerID))
 }
 
-func (s *KeychainTokenStore) removeFromIndex(userID, providerID string) error {
-	existing := s.readIndex(userID)
+func (s *KeychainTokenStore) removeFromIndex(orgID, providerID string) error {
+	existing := s.readIndex(orgID)
 	updated := existing[:0]
 	for _, p := range existing {
 		if p != providerID {
 			updated = append(updated, p)
 		}
 	}
-	return s.writeIndex(userID, updated)
+	return s.writeIndex(orgID, updated)
 }

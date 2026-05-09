@@ -45,8 +45,8 @@ func NewSecretProvider() *SecretProvider {
 
 func (p *SecretProvider) Resolve(ctx context.Context, key string) (string, error) {
 	// use OAuthMgr directly so that it refreshes tokens if needed
-	if userID, providerID, ok := oauth.ParseOAuthKey(key); ok && oauthMgr != nil {
-		token, err := oauthMgr.GetAccessToken(ctx, userID, providerID)
+	if orgID, providerID, ok := oauth.ParseOAuthKey(key); ok && oauthMgr != nil {
+		token, err := oauthMgr.GetAccessToken(ctx, orgID, providerID)
 		if errors.Is(err, oauth.ErrNotConnected) {
 			return "", secrets.ErrSecretNotFound
 		}
