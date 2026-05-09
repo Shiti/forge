@@ -59,10 +59,6 @@ func fromStoredEntry(s *storedEntry) *tokenEntry {
 	}
 }
 
-func keychainAccount(userID, providerID string) string {
-	return "oauth:" + userID + "|" + providerID
-}
-
 func keychainIndexAccount(userID string) string {
 	return userID + "|__index__"
 }
@@ -88,14 +84,14 @@ func (s *KeychainTokenStore) Save(userID, providerID string, entry *tokenEntry) 
 	if err != nil {
 		return fmt.Errorf("marshaling token: %w", err)
 	}
-	if err := keyring.Set(s.service, keychainAccount(userID, providerID), string(data)); err != nil {
+	if err := keyring.Set(s.service, StoreKey(userID, providerID), string(data)); err != nil {
 		return fmt.Errorf("saving to keychain: %w", err)
 	}
 	return s.addToIndex(userID, providerID)
 }
 
 func (s *KeychainTokenStore) Load(userID, providerID string) (*tokenEntry, bool) {
-	data, err := keyring.Get(s.service, keychainAccount(userID, providerID))
+	data, err := keyring.Get(s.service, StoreKey(userID, providerID))
 	if err != nil {
 		return nil, false
 	}
@@ -107,7 +103,7 @@ func (s *KeychainTokenStore) Load(userID, providerID string) (*tokenEntry, bool)
 }
 
 func (s *KeychainTokenStore) Delete(userID, providerID string) bool {
-	if err := keyring.Delete(s.service, keychainAccount(userID, providerID)); err != nil {
+	if err := keyring.Delete(s.service, StoreKey(userID, providerID)); err != nil {
 		return false
 	}
 	_ = s.removeFromIndex(userID, providerID)

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rustic-ai/forge/forge-go/helper/idgen"
+	"gopkg.in/yaml.v3"
 )
 
 // AgentTag represents a tag that can be assigned to an agent.
@@ -69,7 +70,7 @@ func (d *DependencySpec) UnmarshalJSON(data []byte) error {
 type SecretNeed struct {
 	Key      string `json:"key" yaml:"key"`
 	Label    string `json:"label,omitempty" yaml:"label,omitempty"`
-	Required *bool  `json:"required,omitempty" yaml:"required,omitempty"`
+	Optional *bool  `json:"optional,omitempty" yaml:"optional,omitempty"`
 }
 
 func NewSecretNeed(key string) SecretNeed {
@@ -81,9 +82,6 @@ func NewSecretNeed(key string) SecretNeed {
 func (s *SecretNeed) Normalize() {
 	s.Key = strings.TrimSpace(s.Key)
 	s.Label = strings.TrimSpace(s.Label)
-	if s.Required == nil {
-		s.Required = boolPtr(true)
-	}
 }
 
 func (s *SecretNeed) UnmarshalJSON(data []byte) error {
@@ -97,11 +95,27 @@ func (s *SecretNeed) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UnmarshalYAML accepts both plain string ("MY_KEY") and struct ({key: MY_KEY}) forms.
+func (s *SecretNeed) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		*s = NewSecretNeed(value.Value)
+		return nil
+	}
+	type alias SecretNeed
+	raw := alias(NewSecretNeed(""))
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*s = SecretNeed(raw)
+	s.Normalize()
+	return nil
+}
+
 type OAuthNeed struct {
 	Provider string   `json:"provider" yaml:"provider"`
 	Label    string   `json:"label,omitempty" yaml:"label,omitempty"`
 	Scopes   []string `json:"scopes,omitempty" yaml:"scopes,omitempty"`
-	Required *bool    `json:"required,omitempty" yaml:"required,omitempty"`
+	Optional *bool    `json:"optional,omitempty" yaml:"optional,omitempty"`
 }
 
 func NewOAuthNeed(provider string) OAuthNeed {
@@ -121,9 +135,6 @@ func (o *OAuthNeed) Normalize() {
 	}
 	for i := range o.Scopes {
 		o.Scopes[i] = strings.TrimSpace(o.Scopes[i])
-	}
-	if o.Required == nil {
-		o.Required = boolPtr(true)
 	}
 }
 

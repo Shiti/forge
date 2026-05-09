@@ -112,7 +112,7 @@ func TestLevel3_LLMAgentIntegration(t *testing.T) {
 	require.NoError(t, err, "Failed to load custom registry yaml")
 
 	entry, _ := r.Lookup(agentSpec.ClassName)
-	envVars, err := envvars.BuildAgentEnv(ctx, guildSpec, &agentSpec, entry, secretProvider)
+	envVars, err := envvars.BuildAgentEnv(ctx, guildSpec, &agentSpec, entry, secretProvider, "")
 	require.NoError(t, err)
 
 	// Negative Test: Ensure unrequested host environment variables are NOT passed into the child

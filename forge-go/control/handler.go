@@ -313,7 +313,7 @@ func (h *ControlQueueHandler) handleSpawn(ctx context.Context, req *protocol.Spa
 
 	orgID := h.resolveOrganizationForSpawn(req, guildOrgID)
 
-	envVars, err := envvars.BuildAgentEnv(ctx, guildSpec, &req.AgentSpec, entry, h.secrets)
+	envVars, err := envvars.BuildAgentEnv(ctx, guildSpec, &req.AgentSpec, entry, h.secrets, req.OrganizationID)
 	if err != nil {
 		slog.Error("handleSpawn: env var build failed", "agent_id", req.AgentSpec.ID, "error", err)
 		_ = h.emitSpawnRejected(ctx, req, "spawn rejected because environment build failed", map[string]any{

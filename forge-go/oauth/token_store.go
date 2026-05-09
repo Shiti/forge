@@ -44,21 +44,21 @@ func NewInMemoryTokenStore() *InMemoryTokenStore {
 func (s *InMemoryTokenStore) Save(userID, providerID string, entry *tokenEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.tokens[storeKey(userID, providerID)] = entry
+	s.tokens[StoreKey(userID, providerID)] = entry
 	return nil
 }
 
 func (s *InMemoryTokenStore) Load(userID, providerID string) (*tokenEntry, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e, ok := s.tokens[storeKey(userID, providerID)]
+	e, ok := s.tokens[StoreKey(userID, providerID)]
 	return e, ok
 }
 
 func (s *InMemoryTokenStore) Delete(userID, providerID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := storeKey(userID, providerID)
+	key := StoreKey(userID, providerID)
 	_, ok := s.tokens[key]
 	delete(s.tokens, key)
 	return ok
@@ -75,8 +75,4 @@ func (s *InMemoryTokenStore) LoadAllForUser(userID string) map[string]*tokenEntr
 		}
 	}
 	return out
-}
-
-func storeKey(userID, providerID string) string {
-	return userID + ":" + providerID
 }

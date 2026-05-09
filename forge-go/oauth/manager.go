@@ -4,12 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
 )
+
+// ErrNotConnected is returned by GetAccessToken when no token exists for the
+// given (userID, providerID) pair.
+var ErrNotConnected = errors.New("oauth: provider not connected")
 
 // pendingFlow holds in-progress OAuth state between authorize and callback.
 type pendingFlow struct {
@@ -179,7 +184,7 @@ func (m *Manager) GetAccessToken(ctx context.Context, userID, providerID string)
 
 	entry, ok := m.store.Load(userID, providerID)
 	if !ok {
-		return "", fmt.Errorf("provider %q not connected for user %q", providerID, userID)
+		return "", fmt.Errorf("provider %q not connected for user %q: %w", providerID, userID, ErrNotConnected)
 	}
 
 	if entry.token.Valid() && time.Until(entry.token.Expiry) > 60*time.Second {
@@ -199,6 +204,17 @@ func (m *Manager) GetAccessToken(ctx context.Context, userID, providerID string)
 	entry.token = newToken
 	_ = m.store.Save(userID, providerID, entry)
 	return newToken.AccessToken, nil
+}
+
+// SeedToken stores a non-expiring access token directly, bypassing the OAuth
+// flow. Intended for tests and local development only.
+func (m *Manager) SeedToken(userID, providerID, accessToken string) {
+	_ = m.store.Save(userID, providerID, &tokenEntry{
+		token: &oauth2.Token{
+			AccessToken: accessToken,
+			Expiry:      time.Now().Add(24 * time.Hour),
+		},
+	})
 }
 
 // Disconnect removes stored tokens for the provider. Returns true if the

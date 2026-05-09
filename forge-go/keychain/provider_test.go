@@ -2,12 +2,11 @@ package keychain
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/rustic-ai/forge/forge-go/forgepath"
+	"github.com/rustic-ai/forge/forge-go/oauth"
 	"github.com/rustic-ai/forge/forge-go/secrets"
 	"github.com/zalando/go-keyring"
 )
@@ -32,16 +31,10 @@ func TestSecretProvider_PlainSecret(t *testing.T) {
 func TestSecretProvider_OAuthToken(t *testing.T) {
 	keyring.MockInit()
 
-	entry := map[string]any{
-		"access_token":  "ghp_test456",
-		"token_type":    "Bearer",
-		"refresh_token": "refresh_xyz",
-		"expiry":        time.Now().Add(time.Hour),
-	}
-	data, _ := json.Marshal(entry)
-	if err := keyring.Set(forgepath.AppNamespace(), "oauth:user1|github", string(data)); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	mgr := oauth.NewManager(&oauth.ProvidersConfig{})
+	mgr.SeedToken("user1", "github", "ghp_test456")
+	SetOAuthManager(mgr)
+	t.Cleanup(func() { SetOAuthManager(nil) })
 
 	p := NewSecretProvider()
 	val, err := p.Resolve(context.Background(), "oauth:user1|github")
@@ -66,16 +59,11 @@ func TestSecretProvider_NotFound(t *testing.T) {
 func TestSecretProvider_UserIsolation(t *testing.T) {
 	keyring.MockInit()
 
-	for _, tc := range []struct{ user, token string }{
-		{"alice", "token-alice"},
-		{"bob", "token-bob"},
-	} {
-		entry := map[string]any{"access_token": tc.token}
-		data, _ := json.Marshal(entry)
-		if err := keyring.Set(forgepath.AppNamespace(), "oauth:"+tc.user+"|github", string(data)); err != nil {
-			t.Fatalf("seed %s: %v", tc.user, err)
-		}
-	}
+	mgr := oauth.NewManager(&oauth.ProvidersConfig{})
+	mgr.SeedToken("alice", "github", "token-alice")
+	mgr.SeedToken("bob", "github", "token-bob")
+	SetOAuthManager(mgr)
+	t.Cleanup(func() { SetOAuthManager(nil) })
 
 	p := NewSecretProvider()
 	ctx := context.Background()

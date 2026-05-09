@@ -9,15 +9,11 @@
 // The key passed to Resolve is used directly as the keychain account name.
 // For OAuth tokens stored by the OAuth token store, the key must include the
 // userID prefix: "userID|providerID" (e.g. "alice|github").
-//
 package keychain
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strings"
-	"time"
 
 	"github.com/rustic-ai/forge/forge-go/forgepath"
 	"github.com/rustic-ai/forge/forge-go/oauth"
@@ -47,40 +43,16 @@ func NewSecretProvider() *SecretProvider {
 	return &SecretProvider{service: forgepath.AppNamespace()}
 }
 
-func NewSecretProviderWithService(service string) *SecretProvider {
-	return &SecretProvider{service: service}
-}
-
-// parseOAuthKey parses an "oauth:userID|providerID" key. Returns ok=false for non-OAuth keys.
-func parseOAuthKey(key string) (userID, providerID string, ok bool) {
-	rest, found := strings.CutPrefix(key, "oauth:")
-	if !found {
-		return "", "", false
-	}
-	idx := strings.Index(rest, "|")
-	if idx <= 0 || idx == len(rest)-1 {
-		return "", "", false
-	}
-	return rest[:idx], rest[idx+1:], true
-}
-
-// parseOAuthEntry parses raw as an OAuth token JSON. Returns the access token
-// and whether it needs refresh (expiring within 60s with a refresh token present).
-// Returns ("", false) if raw is not OAuth token JSON.
-func parseOAuthEntry(raw string) (accessToken string, needsRefresh bool) {
-	var entry struct {
-		AccessToken  string    `json:"access_token"`
-		RefreshToken string    `json:"refresh_token"`
-		Expiry       time.Time `json:"expiry"`
-	}
-	if err := json.Unmarshal([]byte(raw), &entry); err != nil || entry.AccessToken == "" {
-		return "", false
-	}
-	expired := entry.RefreshToken != "" && !entry.Expiry.IsZero() && time.Until(entry.Expiry) <= 60*time.Second
-	return entry.AccessToken, expired
-}
-
 func (p *SecretProvider) Resolve(ctx context.Context, key string) (string, error) {
+	// use OAuthMgr directly so that it refreshes tokens if needed
+	if userID, providerID, ok := oauth.ParseOAuthKey(key); ok && oauthMgr != nil {
+		token, err := oauthMgr.GetAccessToken(ctx, userID, providerID)
+		if errors.Is(err, oauth.ErrNotConnected) {
+			return "", secrets.ErrSecretNotFound
+		}
+		return token, err
+	}
+
 	raw, err := keyring.Get(p.service, key)
 	if err != nil {
 		if errors.Is(err, keyring.ErrNotFound) {
@@ -88,16 +60,6 @@ func (p *SecretProvider) Resolve(ctx context.Context, key string) (string, error
 		}
 		return "", err
 	}
-
-	if userID, providerID, ok := parseOAuthKey(key); ok {
-		if token, needsRefresh := parseOAuthEntry(raw); token != "" {
-			if needsRefresh && oauthMgr != nil {
-				return oauthMgr.GetAccessToken(ctx, userID, providerID)
-			}
-			return token, nil
-		}
-	}
-
 	return raw, nil
 }
 

@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rustic-ai/forge/forge-go/oauth"
 	"github.com/rustic-ai/forge/forge-go/protocol"
+	"github.com/rustic-ai/forge/forge-go/registry"
 	"github.com/rustic-ai/forge/forge-go/secrets"
 )
 
@@ -55,7 +57,7 @@ func TestBuildAgentEnv(t *testing.T) {
 		},
 	}
 
-	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, provider)
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, provider, "")
 	if err != nil {
 		t.Fatalf("BuildAgentEnv failed: %v", err)
 	}
@@ -91,7 +93,7 @@ func TestBuildAgentEnv(t *testing.T) {
 
 	// Verify missing secret is skipped gracefully
 	agentSpec.Resources.Secrets = append(agentSpec.Resources.Secrets, "MISSING_KEY")
-	envSlice, err = BuildAgentEnv(ctx, guildSpec, agentSpec, nil, provider)
+	envSlice, err = BuildAgentEnv(ctx, guildSpec, agentSpec, nil, provider, "")
 	if err != nil {
 		t.Fatalf("Expected BuildAgentEnv to succeed despite missing secret, got: %v", err)
 	}
@@ -125,7 +127,7 @@ func TestBuildAgentEnv_RedisOSOverride(t *testing.T) {
 	// Simulate OS environment variables set by StartLocal
 	t.Setenv("FORGE_CLIENT_PROPERTIES_JSON", `{"redis_client": {"host": "127.0.0.1", "port": "45629", "db": 0}}`)
 
-	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}})
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}}, "")
 	if err != nil {
 		t.Fatalf("BuildAgentEnv failed: %v", err)
 	}
@@ -181,7 +183,7 @@ func TestBuildAgentEnv_NATSAutoInjection(t *testing.T) {
 	// Case 1: NATS_URL env var set — should inject that URL.
 	t.Setenv("NATS_URL", "nats://nats.example.com:4222")
 
-	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}})
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}}, "")
 	if err != nil {
 		t.Fatalf("BuildAgentEnv failed: %v", err)
 	}
@@ -222,7 +224,7 @@ func TestBuildAgentEnv_NATSAutoInjection(t *testing.T) {
 	// Case 2: No NATS_URL set — should fall back to nats://localhost:4222.
 	t.Setenv("NATS_URL", "")
 
-	envSlice2, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}})
+	envSlice2, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}}, "")
 	if err != nil {
 		t.Fatalf("BuildAgentEnv failed: %v", err)
 	}
@@ -252,6 +254,164 @@ func TestBuildAgentEnv_NATSAutoInjection(t *testing.T) {
 	}
 }
 
+func TestBuildAgentEnv_RegistrySecretLabel(t *testing.T) {
+	ctx := context.Background()
+
+	guildSpec := &protocol.GuildSpec{ID: "test/guild", Name: "Test"}
+	agentSpec := &protocol.AgentSpec{ID: "AgentLabel", ClassName: "test.AgentLabel"}
+
+	regEntry := &registry.AgentRegistryEntry{
+		Secrets: []protocol.SecretNeed{
+			{Key: "OPENAI_API_KEY", Label: "OPENAI_TOKEN"},
+		},
+	}
+
+	provider := &mockSecretProvider{
+		secrets: map[string]string{
+			"OPENAI_API_KEY": "sk-test123",
+		},
+	}
+
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, regEntry, provider, "")
+	if err != nil {
+		t.Fatalf("BuildAgentEnv failed: %v", err)
+	}
+
+	envMap := make(map[string]string)
+	for _, e := range envSlice {
+		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	if envMap["OPENAI_TOKEN"] != "sk-test123" {
+		t.Errorf("expected OPENAI_TOKEN=sk-test123, got %q", envMap["OPENAI_TOKEN"])
+	}
+	if _, found := envMap["OPENAI_API_KEY"]; found {
+		t.Errorf("OPENAI_API_KEY should not appear in env (label overrides key)")
+	}
+}
+
+func TestBuildAgentEnv_OAuthToken(t *testing.T) {
+	ctx := context.Background()
+
+	orgID := "acme"
+	guildSpec := &protocol.GuildSpec{ID: "test/guild", Name: "Test"}
+	agentSpec := &protocol.AgentSpec{ID: "AgentOAuth", ClassName: "test.AgentOAuth"}
+
+	regEntry := &registry.AgentRegistryEntry{
+		OAuth: []protocol.OAuthNeed{
+			{Provider: "github", Label: "GITHUB_TOKEN"},
+		},
+	}
+
+	provider := &mockSecretProvider{
+		secrets: map[string]string{
+			oauth.StoreKey(orgID, "github"): "ghp_test456",
+		},
+	}
+
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, regEntry, provider, orgID)
+	if err != nil {
+		t.Fatalf("BuildAgentEnv failed: %v", err)
+	}
+
+	envMap := make(map[string]string)
+	for _, e := range envSlice {
+		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	if envMap["GITHUB_TOKEN"] != "ghp_test456" {
+		t.Errorf("expected GITHUB_TOKEN=ghp_test456, got %q", envMap["GITHUB_TOKEN"])
+	}
+}
+
+func TestBuildAgentEnv_RegistrySecret_RequiredMissing(t *testing.T) {
+	ctx := context.Background()
+
+	guildSpec := &protocol.GuildSpec{ID: "test/guild", Name: "Test"}
+	agentSpec := &protocol.AgentSpec{ID: "AgentSec", ClassName: "test.AgentSec"}
+
+	optFalse := false
+	regEntry := &registry.AgentRegistryEntry{
+		Secrets: []protocol.SecretNeed{
+			{Key: "MISSING_KEY", Label: "MISSING_KEY", Optional: &optFalse},
+		},
+	}
+
+	_, err := BuildAgentEnv(ctx, guildSpec, agentSpec, regEntry, &mockSecretProvider{secrets: map[string]string{}}, "")
+	if err == nil {
+		t.Fatal("expected error for missing required secret, got nil")
+	}
+}
+
+func TestBuildAgentEnv_RegistrySecret_OptionalMissing(t *testing.T) {
+	ctx := context.Background()
+
+	guildSpec := &protocol.GuildSpec{ID: "test/guild", Name: "Test"}
+	agentSpec := &protocol.AgentSpec{ID: "AgentSec", ClassName: "test.AgentSec"}
+
+	regEntry := &registry.AgentRegistryEntry{
+		Secrets: []protocol.SecretNeed{
+			protocol.NewSecretNeed("OPTIONAL_KEY"), // Optional=nil by default (skip silently)
+		},
+	}
+
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, regEntry, &mockSecretProvider{secrets: map[string]string{}}, "")
+	if err != nil {
+		t.Fatalf("optional missing secret should be skipped, got: %v", err)
+	}
+	for _, e := range envSlice {
+		if strings.HasPrefix(e, "OPTIONAL_KEY=") {
+			t.Errorf("OPTIONAL_KEY should not appear when secret is missing: %s", e)
+		}
+	}
+}
+
+func TestBuildAgentEnv_OAuthToken_RequiredMissing(t *testing.T) {
+	ctx := context.Background()
+
+	guildSpec := &protocol.GuildSpec{ID: "test/guild", Name: "Test"}
+	agentSpec := &protocol.AgentSpec{ID: "AgentOAuth", ClassName: "test.AgentOAuth"}
+
+	optFalse := false
+	regEntry := &registry.AgentRegistryEntry{
+		OAuth: []protocol.OAuthNeed{
+			{Provider: "github", Label: "GITHUB_TOKEN", Optional: &optFalse},
+		},
+	}
+
+	_, err := BuildAgentEnv(ctx, guildSpec, agentSpec, regEntry, &mockSecretProvider{secrets: map[string]string{}}, "")
+	if err == nil {
+		t.Fatal("expected error for missing required OAuth token, got nil")
+	}
+}
+
+func TestBuildAgentEnv_OAuthToken_OptionalMissing(t *testing.T) {
+	ctx := context.Background()
+
+	guildSpec := &protocol.GuildSpec{ID: "test/guild", Name: "Test"}
+	agentSpec := &protocol.AgentSpec{ID: "AgentOAuth", ClassName: "test.AgentOAuth"}
+
+	regEntry := &registry.AgentRegistryEntry{
+		OAuth: []protocol.OAuthNeed{
+			protocol.NewOAuthNeed("github"), // Optional=nil by default (skip silently)
+		},
+	}
+
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, regEntry, &mockSecretProvider{secrets: map[string]string{}}, "")
+	if err != nil {
+		t.Fatalf("optional missing OAuth token should be skipped, got: %v", err)
+	}
+	for _, e := range envSlice {
+		if strings.HasPrefix(e, "GITHUB_TOKEN=") {
+			t.Errorf("GITHUB_TOKEN should not appear when token is missing: %s", e)
+		}
+	}
+}
+
 func TestBuildAgentEnv_SerializesAgentDependencyMap(t *testing.T) {
 	ctx := context.Background()
 
@@ -275,7 +435,7 @@ func TestBuildAgentEnv_SerializesAgentDependencyMap(t *testing.T) {
 		},
 	}
 
-	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}})
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, nil, &mockSecretProvider{secrets: map[string]string{}}, "")
 	if err != nil {
 		t.Fatalf("BuildAgentEnv failed: %v", err)
 	}

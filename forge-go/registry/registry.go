@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rustic-ai/forge/forge-go/protocol"
 	"gopkg.in/yaml.v3"
 )
 
@@ -33,7 +34,8 @@ type AgentRegistryEntry struct {
 	Image            string                 `yaml:"image,omitempty"`             // For docker
 	Executable       string                 `yaml:"executable,omitempty"`        // For binary
 	Args             []string               `yaml:"args,omitempty"`              // Additional args
-	Secrets          []string               `yaml:"secrets,omitempty"`           // Secrets required by the agent
+	Secrets          []protocol.SecretNeed  `yaml:"secrets,omitempty"`           // Secrets required by the agent
+	OAuth            []protocol.OAuthNeed   `yaml:"oauth,omitempty"`             // OAuth providers required by the agent
 	Network          []string               `yaml:"network,omitempty"`           // Authorized egress hosts/networks
 	Filesystem       []FilesystemPermission `yaml:"filesystem,omitempty"`        // Host bind mounts
 }

@@ -149,14 +149,14 @@ func TestAgentNeedsUnmarshal_Defaults(t *testing.T) {
 	if len(needs.Needs.Secrets) != 1 || needs.Needs.Secrets[0].Key != "OPENAI_API_KEY" {
 		t.Fatalf("expected normalized secret key")
 	}
-	if needs.Needs.Secrets[0].Required == nil || !*needs.Needs.Secrets[0].Required {
-		t.Fatalf("expected secret required default true")
+	if needs.Needs.Secrets[0].Optional != nil {
+		t.Fatalf("expected secret optional by default (nil), got non-nil")
 	}
 	if len(needs.Needs.OAuth) != 1 || needs.Needs.OAuth[0].Provider != "google" {
 		t.Fatalf("expected normalized oauth provider")
 	}
-	if needs.Needs.OAuth[0].Required == nil || !*needs.Needs.OAuth[0].Required {
-		t.Fatalf("expected oauth required default true")
+	if needs.Needs.OAuth[0].Optional != nil {
+		t.Fatalf("expected oauth optional by default (nil), got non-nil")
 	}
 	if len(needs.Needs.Capabilities) != 1 || needs.Needs.Capabilities[0].Type != "filesystem" {
 		t.Fatalf("expected normalized capability type")
