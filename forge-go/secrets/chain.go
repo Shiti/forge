@@ -69,9 +69,12 @@ func DefaultProvider() SecretProvider {
 	}
 	var providers []SecretProvider
 	for _, name := range strings.Split(order, ",") {
-		if p, err := newProvider(strings.TrimSpace(name)); err == nil {
-			providers = append(providers, p)
+		p, err := newProvider(strings.TrimSpace(name))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "secrets: %v (check FORGE_SECRET_PROVIDERS and side-effect imports)\n", err)
+			continue
 		}
+		providers = append(providers, p)
 	}
 	if len(providers) == 0 {
 		return NewChainSecretProvider(

@@ -46,6 +46,38 @@ func TestSecretProvider_OAuthToken(t *testing.T) {
 	}
 }
 
+func TestSecretProvider_OAuthToken_NoManager_JSONFallback(t *testing.T) {
+	keyring.MockInit()
+
+	raw := `{"access_token":"ghp_fallback","token_type":"bearer","refresh_token":"","expiry":"0001-01-01T00:00:00Z"}`
+	if err := keyring.Set(forgepath.AppNamespace(), "oauth:org1|github", raw); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	p := NewSecretProvider()
+	val, err := p.Resolve(context.Background(), "oauth:org1|github")
+	if err != nil {
+		t.Fatalf("expected token from JSON fallback, got error: %v", err)
+	}
+	if val != "ghp_fallback" {
+		t.Errorf("expected ghp_fallback, got %s", val)
+	}
+}
+
+func TestSecretProvider_OAuthToken_NoManager_InvalidJSON(t *testing.T) {
+	keyring.MockInit()
+
+	if err := keyring.Set(forgepath.AppNamespace(), "oauth:org1|github", "not-json"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	p := NewSecretProvider()
+	_, err := p.Resolve(context.Background(), "oauth:org1|github")
+	if !errors.Is(err, secrets.ErrSecretNotFound) {
+		t.Errorf("expected ErrSecretNotFound for invalid JSON, got %v", err)
+	}
+}
+
 func TestSecretProvider_NotFound(t *testing.T) {
 	keyring.MockInit()
 

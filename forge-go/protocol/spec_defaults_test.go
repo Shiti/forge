@@ -3,6 +3,8 @@ package protocol
 import (
 	"encoding/json"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestNewGuildSpec_DefaultParity(t *testing.T) {
@@ -155,6 +157,9 @@ func TestAgentNeedsUnmarshal_Defaults(t *testing.T) {
 	if len(needs.Needs.OAuth) != 1 || needs.Needs.OAuth[0].Provider != "google" {
 		t.Fatalf("expected normalized oauth provider")
 	}
+	if needs.Needs.OAuth[0].Label != "GOOGLE_TOKEN" {
+		t.Fatalf("expected oauth label to default to GOOGLE_TOKEN, got %q", needs.Needs.OAuth[0].Label)
+	}
 	if needs.Needs.OAuth[0].Optional != nil {
 		t.Fatalf("expected oauth optional by default (nil), got non-nil")
 	}
@@ -169,5 +174,49 @@ func TestAgentNeedsUnmarshal_Defaults(t *testing.T) {
 	}
 	if needs.Needs.Filesystem.Allow[0].Path != "/tmp/project" || needs.Needs.Filesystem.Allow[0].Mode != "rw" {
 		t.Fatalf("expected normalized filesystem need")
+	}
+}
+
+func TestOAuthNeedUnmarshalYAML_Defaults(t *testing.T) {
+	raw := []byte(`
+class_name: rustic_ai.browser.agent.BrowserAgent
+needs:
+  oauth:
+    - provider: " github "
+    - provider: gitlab
+      label: MY_GITLAB_TOKEN
+      scopes:
+        - read_api
+`)
+
+	var needs AgentNeeds
+	if err := yaml.Unmarshal(raw, &needs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(needs.Needs.OAuth) != 2 {
+		t.Fatalf("expected 2 oauth entries, got %d", len(needs.Needs.OAuth))
+	}
+
+	gh := needs.Needs.OAuth[0]
+	if gh.Provider != "github" {
+		t.Errorf("expected trimmed provider 'github', got %q", gh.Provider)
+	}
+	if gh.Label != "GITHUB_TOKEN" {
+		t.Errorf("expected label defaulted to GITHUB_TOKEN, got %q", gh.Label)
+	}
+	if gh.Scopes == nil {
+		t.Errorf("expected non-nil scopes slice")
+	}
+	if gh.Optional != nil {
+		t.Errorf("expected optional nil by default")
+	}
+
+	gl := needs.Needs.OAuth[1]
+	if gl.Label != "MY_GITLAB_TOKEN" {
+		t.Errorf("expected explicit label MY_GITLAB_TOKEN, got %q", gl.Label)
+	}
+	if len(gl.Scopes) != 1 || gl.Scopes[0] != "read_api" {
+		t.Errorf("expected scopes [read_api], got %v", gl.Scopes)
 	}
 }

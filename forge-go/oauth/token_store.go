@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 )
 
@@ -12,7 +11,6 @@ type TokenStore interface {
 	Save(orgID, providerID string, entry *tokenEntry) error
 	Load(orgID, providerID string) (*tokenEntry, bool)
 	Delete(orgID, providerID string) bool
-	LoadAllForOrg(orgID string) map[string]*tokenEntry
 }
 
 // NewTokenStore creates a TokenStore by name. Supported backends:
@@ -34,7 +32,7 @@ func NewTokenStore(kind string) (TokenStore, error) {
 // on server restart.
 type InMemoryTokenStore struct {
 	mu     sync.Mutex
-	tokens map[string]*tokenEntry // key: "orgID|providerID"
+	tokens map[string]*tokenEntry // key: "StoreKey(orgID, providerID)"
 }
 
 func NewInMemoryTokenStore() *InMemoryTokenStore {
@@ -62,17 +60,4 @@ func (s *InMemoryTokenStore) Delete(orgID, providerID string) bool {
 	_, ok := s.tokens[key]
 	delete(s.tokens, key)
 	return ok
-}
-
-func (s *InMemoryTokenStore) LoadAllForOrg(orgID string) map[string]*tokenEntry {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	prefix := StoreKey(orgID, "")
-	out := make(map[string]*tokenEntry)
-	for k, v := range s.tokens {
-		if strings.HasPrefix(k, prefix) {
-			out[k[len(prefix):]] = v
-		}
-	}
-	return out
 }

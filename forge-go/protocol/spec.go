@@ -74,7 +74,7 @@ type SecretNeed struct {
 }
 
 func NewSecretNeed(key string) SecretNeed {
-	s := SecretNeed{Key: key}
+	s := SecretNeed{Key: key, Label: key}
 	s.Normalize()
 	return s
 }
@@ -82,6 +82,9 @@ func NewSecretNeed(key string) SecretNeed {
 func (s *SecretNeed) Normalize() {
 	s.Key = strings.TrimSpace(s.Key)
 	s.Label = strings.TrimSpace(s.Label)
+	if s.Label == "" {
+		s.Label = s.Key
+	}
 }
 
 func (s *SecretNeed) UnmarshalJSON(data []byte) error {
@@ -121,6 +124,7 @@ type OAuthNeed struct {
 func NewOAuthNeed(provider string) OAuthNeed {
 	o := OAuthNeed{
 		Provider: provider,
+		Label:    strings.ToUpper(strings.TrimSpace(provider)) + "_TOKEN",
 		Scopes:   []string{},
 	}
 	o.Normalize()
@@ -130,6 +134,9 @@ func NewOAuthNeed(provider string) OAuthNeed {
 func (o *OAuthNeed) Normalize() {
 	o.Provider = strings.TrimSpace(o.Provider)
 	o.Label = strings.TrimSpace(o.Label)
+	if o.Label == "" {
+		o.Label = strings.ToUpper(o.Provider) + "_TOKEN"
+	}
 	if o.Scopes == nil {
 		o.Scopes = []string{}
 	}
@@ -140,8 +147,19 @@ func (o *OAuthNeed) Normalize() {
 
 func (o *OAuthNeed) UnmarshalJSON(data []byte) error {
 	type alias OAuthNeed
-	raw := alias(NewOAuthNeed(""))
+	raw := alias{Scopes: []string{}}
 	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*o = OAuthNeed(raw)
+	o.Normalize()
+	return nil
+}
+
+func (o *OAuthNeed) UnmarshalYAML(value *yaml.Node) error {
+	type alias OAuthNeed
+	raw := alias{Scopes: []string{}}
+	if err := value.Decode(&raw); err != nil {
 		return err
 	}
 	*o = OAuthNeed(raw)

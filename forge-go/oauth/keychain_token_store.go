@@ -3,7 +3,6 @@ package oauth
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/rustic-ai/forge/forge-go/forgepath"
@@ -59,10 +58,6 @@ func fromStoredEntry(s *storedEntry) *tokenEntry {
 	}
 }
 
-func keychainIndexAccount(orgID string) string {
-	return orgID + "|__index__"
-}
-
 // KeychainTokenStore persists OAuth tokens in the OS keychain (macOS Keychain,
 // Windows Credential Manager, Linux Secret Service via libsecret).
 //
@@ -87,7 +82,7 @@ func (s *KeychainTokenStore) Save(orgID, providerID string, entry *tokenEntry) e
 	if err := keyring.Set(s.service, StoreKey(orgID, providerID), string(data)); err != nil {
 		return fmt.Errorf("saving to keychain: %w", err)
 	}
-	return s.addToIndex(orgID, providerID)
+	return nil
 }
 
 func (s *KeychainTokenStore) Load(orgID, providerID string) (*tokenEntry, bool) {
@@ -103,53 +98,5 @@ func (s *KeychainTokenStore) Load(orgID, providerID string) (*tokenEntry, bool) 
 }
 
 func (s *KeychainTokenStore) Delete(orgID, providerID string) bool {
-	if err := keyring.Delete(s.service, StoreKey(orgID, providerID)); err != nil {
-		return false
-	}
-	_ = s.removeFromIndex(orgID, providerID)
-	return true
-}
-
-func (s *KeychainTokenStore) LoadAllForOrg(orgID string) map[string]*tokenEntry {
-	providers := s.readIndex(orgID)
-	out := make(map[string]*tokenEntry, len(providers))
-	for _, pid := range providers {
-		if e, ok := s.Load(orgID, pid); ok {
-			out[pid] = e
-		}
-	}
-	return out
-}
-
-func (s *KeychainTokenStore) readIndex(orgID string) []string {
-	data, err := keyring.Get(s.service, keychainIndexAccount(orgID))
-	if err != nil || data == "" {
-		return nil
-	}
-	return strings.Split(data, "\n")
-}
-
-func (s *KeychainTokenStore) writeIndex(orgID string, providers []string) error {
-	return keyring.Set(s.service, keychainIndexAccount(orgID), strings.Join(providers, "\n"))
-}
-
-func (s *KeychainTokenStore) addToIndex(orgID, providerID string) error {
-	existing := s.readIndex(orgID)
-	for _, p := range existing {
-		if p == providerID {
-			return nil
-		}
-	}
-	return s.writeIndex(orgID, append(existing, providerID))
-}
-
-func (s *KeychainTokenStore) removeFromIndex(orgID, providerID string) error {
-	existing := s.readIndex(orgID)
-	updated := existing[:0]
-	for _, p := range existing {
-		if p != providerID {
-			updated = append(updated, p)
-		}
-	}
-	return s.writeIndex(orgID, updated)
+	return keyring.Delete(s.service, StoreKey(orgID, providerID)) == nil
 }

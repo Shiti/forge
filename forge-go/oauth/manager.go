@@ -177,7 +177,7 @@ func (m *Manager) ExchangeCode(ctx context.Context, code, state string) error {
 }
 
 // GetAccessToken returns a valid access token for the provider, refreshing it
-// if it will expire within 60 seconds.
+// if it expires within 60 seconds.
 func (m *Manager) GetAccessToken(ctx context.Context, orgID, providerID string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -202,7 +202,9 @@ func (m *Manager) GetAccessToken(ctx context.Context, orgID, providerID string) 
 		return "", fmt.Errorf("refreshing token: %w", err)
 	}
 	entry.token = newToken
-	_ = m.store.Save(orgID, providerID, entry)
+	if err := m.store.Save(orgID, providerID, entry); err != nil {
+		return "", fmt.Errorf("persisting refreshed token: %w", err)
+	}
 	return newToken.AccessToken, nil
 }
 
@@ -230,17 +232,16 @@ func (m *Manager) ListProviders(orgID, callbackBaseURL string) []ProviderStatus 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	orgTokens := m.store.LoadAllForOrg(orgID)
 	out := make([]ProviderStatus, 0, len(m.providers))
 	for id, cfg := range m.providers {
-		entry, connected := orgTokens[id]
+		entry, connected := m.store.Load(orgID, id)
 		ps := ProviderStatus{
 			ID:          id,
 			DisplayName: cfg.DisplayName,
 			Description: cfg.Description,
 			Connected:   connected,
 			Scopes:      cfg.Scopes,
-			CallbackURL: callbackBaseURL + "/oauth/providers/" + id + "/callback",
+			CallbackURL: callbackBaseURL + "/oauth/organizations/" + orgID + "/providers/" + id + "/callback",
 		}
 		if connected && !entry.token.Expiry.IsZero() {
 			exp := entry.token.Expiry

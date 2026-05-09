@@ -46,7 +46,7 @@ var (
 )
 
 func init() {
-	ServerCmd.Flags().StringVar(&serverAppNamespace, "app-namespace", "forge", "Application namespace for keychain and path isolation")
+	ServerCmd.Flags().StringVar(&serverAppNamespace, "app-namespace", "", "Application namespace for keychain and path isolation")
 	ServerCmd.Flags().StringVar(&serverDB, "db", "", "Database DSN (default: sqlite://<forge-home>/data/forge.db)")
 	ServerCmd.Flags().StringVar(&serverRedis, "redis", "", "Redis URL (default: embedded miniredis)")
 	ServerCmd.Flags().StringVar(&serverNATS, "nats", "", "NATS URL for data-plane messaging (e.g. nats://localhost:4222); omit to use Redis")

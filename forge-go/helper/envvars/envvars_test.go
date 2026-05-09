@@ -292,6 +292,75 @@ func TestBuildAgentEnv_RegistrySecretLabel(t *testing.T) {
 	}
 }
 
+func TestBuildAgentEnv_RegistrySecretKeyEqualsLabelWhenOmitted(t *testing.T) {
+	ctx := context.Background()
+
+	guildSpec := &protocol.GuildSpec{ID: "test/guild", Name: "Test"}
+	agentSpec := &protocol.AgentSpec{ID: "AgentLabel", ClassName: "test.AgentLabel"}
+
+	// JSON with no "label" field — label should default to key via Normalize()
+	var s protocol.SecretNeed
+	if err := json.Unmarshal([]byte(`{"key":"MY_SECRET"}`), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	regEntry := &registry.AgentRegistryEntry{Secrets: []protocol.SecretNeed{s}}
+	provider := &mockSecretProvider{secrets: map[string]string{"MY_SECRET": "value123"}}
+
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, regEntry, provider, "")
+	if err != nil {
+		t.Fatalf("BuildAgentEnv failed: %v", err)
+	}
+
+	envMap := make(map[string]string)
+	for _, e := range envSlice {
+		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	if envMap["MY_SECRET"] != "value123" {
+		t.Errorf("expected MY_SECRET=value123 (label defaulted to key), got %q", envMap["MY_SECRET"])
+	}
+}
+
+func TestBuildAgentEnv_OAuthTokenLabelDefaultsFromProvider(t *testing.T) {
+	ctx := context.Background()
+
+	orgID := "acme"
+	guildSpec := &protocol.GuildSpec{ID: "test/guild", Name: "Test"}
+	agentSpec := &protocol.AgentSpec{ID: "AgentOAuth", ClassName: "test.AgentOAuth"}
+
+	// JSON with no "label" field — label should default to GITHUB_TOKEN via Normalize()
+	var o protocol.OAuthNeed
+	if err := json.Unmarshal([]byte(`{"provider":"github"}`), &o); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	regEntry := &registry.AgentRegistryEntry{OAuth: []protocol.OAuthNeed{o}}
+	provider := &mockSecretProvider{
+		secrets: map[string]string{
+			oauth.StoreKey(orgID, "github"): "ghp_default",
+		},
+	}
+
+	envSlice, err := BuildAgentEnv(ctx, guildSpec, agentSpec, regEntry, provider, orgID)
+	if err != nil {
+		t.Fatalf("BuildAgentEnv failed: %v", err)
+	}
+
+	envMap := make(map[string]string)
+	for _, e := range envSlice {
+		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	if envMap["GITHUB_TOKEN"] != "ghp_default" {
+		t.Errorf("expected GITHUB_TOKEN=ghp_default (label defaulted from provider), got %q", envMap["GITHUB_TOKEN"])
+	}
+}
+
 func TestBuildAgentEnv_OAuthToken(t *testing.T) {
 	ctx := context.Background()
 
