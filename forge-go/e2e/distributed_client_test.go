@@ -180,6 +180,9 @@ agents:
 		statusKey := fmt.Sprintf("forge:agent:status:%s:%s", guildID, "echo-agent")
 		val, err := rdb.Get(context.Background(), statusKey).Result()
 		if err != nil {
+			if err == redis.Nil {
+				return fmt.Errorf("status key %q not written yet", statusKey)
+			}
 			return err
 		}
 		var status map[string]interface{}
