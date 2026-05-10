@@ -67,7 +67,7 @@ type KeychainTokenStore struct {
 }
 
 func NewKeychainTokenStore() *KeychainTokenStore {
-	return NewKeychainTokenStoreWithService(forgepath.AppNamespace())
+	return NewKeychainTokenStoreWithService(forgepath.KeychainService())
 }
 
 func NewKeychainTokenStoreWithService(service string) *KeychainTokenStore {

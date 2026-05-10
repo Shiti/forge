@@ -13,7 +13,6 @@ import (
 )
 
 var (
-	serverAppNamespace        string
 	serverDB                  string
 	serverRedis               string
 	serverNATS                string
@@ -46,7 +45,6 @@ var (
 )
 
 func init() {
-	ServerCmd.Flags().StringVar(&serverAppNamespace, "app-namespace", "", "Application namespace for keychain and path isolation")
 	ServerCmd.Flags().StringVar(&serverDB, "db", "", "Database DSN (default: sqlite://<forge-home>/data/forge.db)")
 	ServerCmd.Flags().StringVar(&serverRedis, "redis", "", "Redis URL (default: embedded miniredis)")
 	ServerCmd.Flags().StringVar(&serverNATS, "nats", "", "NATS URL for data-plane messaging (e.g. nats://localhost:4222); omit to use Redis")
@@ -88,10 +86,6 @@ var ServerCmd = &cobra.Command{
 		out := os.Stdout
 		l := logging.NewLogger(out, logLevel)
 		logging.SetGlobalLogger(l)
-
-		if serverAppNamespace != "" {
-			forgepath.SetAppNamespace(serverAppNamespace)
-		}
 
 		db := serverDB
 		if db == "" {

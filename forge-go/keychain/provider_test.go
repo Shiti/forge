@@ -14,7 +14,7 @@ import (
 func TestSecretProvider_PlainSecret(t *testing.T) {
 	keyring.MockInit()
 
-	if err := keyring.Set(forgepath.AppNamespace(), "MY_API_KEY", "sk-abc123"); err != nil {
+	if err := keyring.Set(forgepath.KeychainService(), "MY_API_KEY", "sk-abc123"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -50,7 +50,7 @@ func TestSecretProvider_OAuthToken_NoManager_JSONFallback(t *testing.T) {
 	keyring.MockInit()
 
 	raw := `{"access_token":"ghp_fallback","token_type":"bearer","refresh_token":"","expiry":"0001-01-01T00:00:00Z"}`
-	if err := keyring.Set(forgepath.AppNamespace(), "oauth:org1|github", raw); err != nil {
+	if err := keyring.Set(forgepath.KeychainService(), "oauth:org1|github", raw); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -67,7 +67,7 @@ func TestSecretProvider_OAuthToken_NoManager_JSONFallback(t *testing.T) {
 func TestSecretProvider_OAuthToken_NoManager_InvalidJSON(t *testing.T) {
 	keyring.MockInit()
 
-	if err := keyring.Set(forgepath.AppNamespace(), "oauth:org1|github", "not-json"); err != nil {
+	if err := keyring.Set(forgepath.KeychainService(), "oauth:org1|github", "not-json"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestSecretProvider_NonOAuthJSONReturnedRaw(t *testing.T) {
 	keyring.MockInit()
 
 	raw := `{"some_field":"some_value"}`
-	if err := keyring.Set(forgepath.AppNamespace(), "JSON_SECRET", raw); err != nil {
+	if err := keyring.Set(forgepath.KeychainService(), "JSON_SECRET", raw); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -133,7 +133,7 @@ func TestSecretProvider_InDefaultProviderChain(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("FORGE_SECRET_PROVIDERS", "keychain")
 
-	if err := keyring.Set(forgepath.AppNamespace(), "CHAIN_KEY", "chain_value"); err != nil {
+	if err := keyring.Set(forgepath.KeychainService(), "CHAIN_KEY", "chain_value"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
