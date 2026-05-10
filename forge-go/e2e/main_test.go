@@ -62,6 +62,11 @@ func TestMain(m *testing.M) {
 			fmt.Fprintf(os.Stderr, "failed to build e2e forge binary: %v\n%s\n", buildErr, string(buildOut))
 			os.Exit(1)
 		}
+
+		// Pre-pull the default Docker agent image so individual tests don't time out on a cold pull.
+		if out, err := exec.Command("docker", "pull", "ghcr.io/astral-sh/uv:python3.13-bookworm-slim").CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "docker pre-pull (non-fatal): %v\n%s\n", err, out)
+		}
 	}
 	code := m.Run()
 	if e2eBaseDir != "" {

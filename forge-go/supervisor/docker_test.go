@@ -27,11 +27,11 @@ func TestBuildContainerConfig_Airgapped(t *testing.T) {
 	cmd := []string{"python", "main.py"}
 	env := []string{"FOO=BAR"}
 
-	cCfg, hCfg := BuildContainerConfig(agentSpec, entry, "test-guild", "ghcr.io/astral-sh/uv:python3.12-bookworm-slim", cmd, env)
+	cCfg, hCfg := BuildContainerConfig(agentSpec, entry, "test-guild", "ghcr.io/astral-sh/uv:python3.13-bookworm-slim", cmd, env)
 
 	// Image
-	if cCfg.Image != "ghcr.io/astral-sh/uv:python3.12-bookworm-slim" {
-		t.Errorf("expected image ghcr.io/astral-sh/uv:python3.12-bookworm-slim, got %s", cCfg.Image)
+	if cCfg.Image != "ghcr.io/astral-sh/uv:python3.13-bookworm-slim" {
+		t.Errorf("expected image ghcr.io/astral-sh/uv:python3.13-bookworm-slim, got %s", cCfg.Image)
 	}
 
 	// Command

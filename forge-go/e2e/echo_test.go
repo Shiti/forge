@@ -166,6 +166,29 @@ func TestLevel1_EchoAgentIntegration(t *testing.T) {
 				}
 			}()
 
+			// For Docker, wait until the supervisor confirms the container is running before
+			// sending messages. This separates cold-start time from the message-exchange timeout.
+			if reqSup == "docker" {
+				statusKey := fmt.Sprintf("forge:agent:status:%s:%s", guildSpec.ID, agentSpec.ID)
+				require.NoError(t, waitFor(90*time.Second, 500*time.Millisecond, func() error {
+					val, err := rdb.Get(context.Background(), statusKey).Result()
+					if err == redis.Nil {
+						return fmt.Errorf("container not yet started")
+					}
+					if err != nil {
+						return err
+					}
+					var st map[string]interface{}
+					if err := json.Unmarshal([]byte(val), &st); err != nil {
+						return err
+					}
+					if state, _ := st["state"].(string); state != "running" {
+						return fmt.Errorf("container state: %q", state)
+					}
+					return nil
+				}), "Docker agent container did not reach running state")
+			}
+
 			// 6. Execute the core test assertions
 			// Send a payload to the topic the EchoAgent is configured to listen to.
 			testPayload := map[string]interface{}{
@@ -175,7 +198,7 @@ func TestLevel1_EchoAgentIntegration(t *testing.T) {
 			topicIn := fmt.Sprintf("%s:echo_topic", guildSpec.ID)
 			msg.TopicPublishedTo = topicIn
 
-			// Background routine to continually ping the agent until it finishes uvx boots and subscribes
+			// Background routine to continually ping the agent until it subscribes.
 			done := make(chan struct{})
 			go func() {
 				for {
@@ -188,8 +211,6 @@ func TestLevel1_EchoAgentIntegration(t *testing.T) {
 				}
 			}()
 
-			// Wait up to 30 seconds for the EchoAgent to receive, process, and publish a response
-			// Docker boots usually take ~3s the first time if cached, but we give 30s.
 			topicOut := fmt.Sprintf("%s:default_topic", guildSpec.ID)
 			respMsg, err := probeAgent.WaitForMessage(ctx, topicOut, 30*time.Second)
 			close(done)

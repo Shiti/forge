@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -209,7 +210,7 @@ func (d *DockerSupervisor) Launch(ctx context.Context, guildID string, agentSpec
 
 	imageRef := entry.Image
 	if imageRef == "" {
-		imageRef = "ghcr.io/astral-sh/uv:python3.12-bookworm-slim"
+		imageRef = "ghcr.io/astral-sh/uv:python3.13-bookworm-slim"
 	}
 
 	if err := d.ensureImage(ctx, imageRef); err != nil {
@@ -218,13 +219,14 @@ func (d *DockerSupervisor) Launch(ctx context.Context, guildID string, agentSpec
 
 	env = append(env, "UV_PROJECT_ENVIRONMENT=/tmp/.venv")
 
-	var cleanEnv []string
+	// Extract UV_CACHE_DIR so we can bind-mount it into the container for caching.
+	var uvCacheDir string
 	for _, e := range env {
-		if !strings.HasPrefix(e, "UV_CACHE_DIR=") {
-			cleanEnv = append(cleanEnv, e)
+		if val, ok := strings.CutPrefix(e, "UV_CACHE_DIR="); ok {
+			uvCacheDir = val
+			break
 		}
 	}
-	env = cleanEnv
 
 	var cmd []string
 	if entry.Runtime == registry.RuntimeDocker {
@@ -265,6 +267,13 @@ func (d *DockerSupervisor) Launch(ctx context.Context, guildID string, agentSpec
 	}
 
 	containerCfg, hostCfg := BuildContainerConfig(agentSpec, entry, guildID, imageRef, cmd, env)
+
+	// Mount the UV cache directory so repeated runs reuse cached packages.
+	if uvCacheDir != "" {
+		if err := os.MkdirAll(uvCacheDir, 0o755); err == nil {
+			hostCfg.Binds = append(hostCfg.Binds, fmt.Sprintf("%s:%s:rw,z", uvCacheDir, uvCacheDir))
+		}
+	}
 
 	// Adjust container config for bridge connectivity.
 	if bridge != nil {
@@ -413,7 +422,7 @@ func (d *DockerSupervisor) relaunchContainer(ctx context.Context, guildID string
 
 	imageRef := entry.Image
 	if imageRef == "" {
-		imageRef = "ghcr.io/astral-sh/uv:python3.12-bookworm-slim"
+		imageRef = "ghcr.io/astral-sh/uv:python3.13-bookworm-slim"
 	}
 
 	var cmd []string
