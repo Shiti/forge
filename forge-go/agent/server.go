@@ -338,7 +338,8 @@ func StartServer(ctx context.Context, cfg *ServerConfig) error {
 
 	httpServer := api.NewServer(db, statusStore, controlPlane, msgBackend, fileStore, cfg.ListenAddress).
 		WithObservability(cfg.TelemetryMode, cfg.TelemetrySQLiteDBPath).
-		WithModelFit("", cfg.DependencyConfig, nil)
+		WithModelFit("", cfg.DependencyConfig, nil).
+		WithOAuth(cfg.OAuthTokenStore)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

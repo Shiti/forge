@@ -2,9 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,19 +21,38 @@ type authorizeResponse struct {
 	AuthURL string `json:"authUrl"`
 }
 
+// validateOrgID rejects empty IDs and values containing | (the StoreKey
+// delimiter) or control characters, which would interfere with key parsing
+// and safe storage of the resulting key.
+func validateOrgID(id string) error {
+	if id == "" {
+		return fmt.Errorf("org_id is required")
+	}
+	if strings.ContainsFunc(id, func(r rune) bool {
+		return r == '|' || unicode.IsControl(r)
+	}) {
+		return fmt.Errorf("org_id contains invalid characters")
+	}
+	return nil
+}
+
 func (s *Server) registerOAuthRoutes(router *gin.Engine, prefix string) {
 	s.oauthRoutePrefix = prefix
-	router.GET(prefix+"/oauth/providers", wrapHTTP(s.handleOAuthListProviders()))
-	router.POST(prefix+"/oauth/providers/:provider_id/authorize", wrapHTTPWithPathValues(s.handleOAuthAuthorize(), "provider_id"))
-	router.GET(prefix+"/oauth/providers/:provider_id/callback", wrapHTTPWithPathValues(s.handleOAuthCallback(), "provider_id"))
-	router.GET(prefix+"/oauth/providers/:provider_id/status", wrapHTTPWithPathValues(s.handleOAuthStatus(), "provider_id"))
-	router.DELETE(prefix+"/oauth/providers/:provider_id", wrapHTTPWithPathValues(s.handleOAuthDisconnect(), "provider_id"))
+	router.GET(prefix+"/oauth/organizations/:org_id/providers", wrapHTTPWithPathValues(s.handleOAuthListProviders(), "org_id"))
+	router.POST(prefix+"/oauth/organizations/:org_id/providers/:provider_id/authorize", wrapHTTPWithPathValues(s.handleOAuthAuthorize(), "org_id", "provider_id"))
+	router.GET(prefix+"/oauth/organizations/:org_id/providers/:provider_id/callback", wrapHTTPWithPathValues(s.handleOAuthCallback(), "org_id", "provider_id"))
+	router.GET(prefix+"/oauth/organizations/:org_id/providers/:provider_id/status", wrapHTTPWithPathValues(s.handleOAuthStatus(), "org_id", "provider_id"))
+	router.DELETE(prefix+"/oauth/organizations/:org_id/providers/:provider_id", wrapHTTPWithPathValues(s.handleOAuthDisconnect(), "org_id", "provider_id"))
 }
 
 func (s *Server) handleOAuthListProviders() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID := extractUserID(r)
-		ReplyJSON(w, http.StatusOK, s.oauthManager.ListProviders(userID, s.publicBaseURL()+s.oauthRoutePrefix))
+		orgID := strings.TrimSpace(r.PathValue("org_id"))
+		if err := validateOrgID(orgID); err != nil {
+			ReplyError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		ReplyJSON(w, http.StatusOK, s.oauthManager.ListProviders(orgID, s.publicBaseURL()+s.oauthRoutePrefix))
 	}
 }
 
@@ -52,13 +73,17 @@ func (s *Server) handleOAuthAuthorize() http.HandlerFunc {
 			return
 		}
 
+		orgID := strings.TrimSpace(r.PathValue("org_id"))
+		if err := validateOrgID(orgID); err != nil {
+			ReplyError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		redirectURL := req.RedirectURL
 		if redirectURL == "" {
-			redirectURL = s.publicBaseURL() + s.oauthRoutePrefix + "/oauth/providers/" + providerID + "/callback"
+			redirectURL = s.publicBaseURL() + s.oauthRoutePrefix + "/oauth/organizations/" + orgID + "/providers/" + providerID + "/callback"
 		}
 
-		userID := extractUserID(r)
-		authURL, _, err := s.oauthManager.GetAuthURL(userID, providerID, req.ClientID, req.ClientSecret, redirectURL)
+		authURL, _, err := s.oauthManager.GetAuthURL(orgID, providerID, req.ClientID, req.ClientSecret, redirectURL)
 		if err != nil {
 			ReplyError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -105,9 +130,13 @@ func (s *Server) handleOAuthStatus() http.HandlerFunc {
 			return
 		}
 
-		userID := extractUserID(r)
+		orgID := strings.TrimSpace(r.PathValue("org_id"))
+		if err := validateOrgID(orgID); err != nil {
+			ReplyError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		ReplyJSON(w, http.StatusOK, map[string]bool{
-			"isConnected": s.oauthManager.IsConnected(userID, providerID),
+			"isConnected": s.oauthManager.IsConnected(orgID, providerID),
 		})
 	}
 }
@@ -120,25 +149,17 @@ func (s *Server) handleOAuthDisconnect() http.HandlerFunc {
 			return
 		}
 
-		userID := extractUserID(r)
-		disconnected := s.oauthManager.Disconnect(userID, providerID)
+		orgID := strings.TrimSpace(r.PathValue("org_id"))
+		if err := validateOrgID(orgID); err != nil {
+			ReplyError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		disconnected := s.oauthManager.Disconnect(orgID, providerID)
 		ReplyJSON(w, http.StatusOK, map[string]interface{}{
 			"providerId":   providerID,
 			"disconnected": disconnected,
 		})
 	}
-}
-
-// extractUserID resolves the caller's user ID from the Authorization header.
-// TODO: parse JWT claims from the Bearer token for real user identity once an
-// identity provider is wired up (FORGE_IDENTITY_MODE != "local").
-func extractUserID(r *http.Request) string {
-	auth := strings.TrimSpace(r.Header.Get("Authorization"))
-	if auth == "" || strings.EqualFold(auth, "bearer dummy token") {
-		return localDummyUserID
-	}
-	// Fall back to dummy user until JWT parsing is implemented.
-	return localDummyUserID
 }
 
 // publicBaseURL returns the externally reachable base URL for this server.

@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/rustic-ai/forge/forge-go/forgepath"
+	"github.com/rustic-ai/forge/forge-go/oauth"
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/rustic-ai/forge/forge-go/registry"
 	"github.com/rustic-ai/forge/forge-go/secrets"
@@ -20,6 +21,7 @@ func BuildAgentEnv(
 	agentSpec *protocol.AgentSpec,
 	regEntry *registry.AgentRegistryEntry,
 	secretProvider secrets.SecretProvider,
+	orgID string,
 ) ([]string, error) {
 
 	envMap := make(map[string]string)
@@ -106,25 +108,8 @@ func BuildAgentEnv(
 		envMap["FORGE_CLIENT_PROPERTIES_JSON"] = "{}"
 	}
 
-	requiredSecrets := make(map[string]bool)
-	for _, s := range agentSpec.Resources.Secrets {
-		requiredSecrets[s] = true
-	}
-	if regEntry != nil {
-		for _, s := range regEntry.Secrets {
-			requiredSecrets[s] = true
-		}
-	}
-
-	for secretKey := range requiredSecrets {
-		val, err := secretProvider.Resolve(ctx, secretKey)
-		if err != nil {
-			if err == secrets.ErrSecretNotFound {
-				continue
-			}
-			return nil, fmt.Errorf("failed to resolve required secret '%s' for agent '%s': %w", secretKey, agentSpec.ID, err)
-		}
-		envMap[secretKey] = val
+	if err := resolveSecrets(ctx, agentSpec, regEntry, secretProvider, orgID, envMap); err != nil {
+		return nil, err
 	}
 
 	uvCacheDir := os.Getenv("FORGE_UV_CACHE_DIR")
@@ -161,4 +146,53 @@ func BuildAgentEnv(
 	}
 
 	return result, nil
+}
+
+func resolveSecrets(
+	ctx context.Context,
+	agentSpec *protocol.AgentSpec,
+	regEntry *registry.AgentRegistryEntry,
+	secretProvider secrets.SecretProvider,
+	orgID string,
+	envMap map[string]string,
+) error {
+	for _, key := range agentSpec.Resources.Secrets {
+		val, err := secretProvider.Resolve(ctx, key)
+		if err != nil {
+			if err == secrets.ErrSecretNotFound {
+				continue
+			}
+			return fmt.Errorf("failed to resolve secret '%s' for agent '%s': %w", key, agentSpec.ID, err)
+		}
+		envMap[key] = val
+	}
+
+	if regEntry == nil {
+		return nil
+	}
+
+	for _, s := range regEntry.Secrets {
+		val, err := secretProvider.Resolve(ctx, s.Key)
+		if err != nil {
+			if err == secrets.ErrSecretNotFound && (s.Optional == nil || *s.Optional) {
+				continue
+			}
+			return fmt.Errorf("failed to resolve secret '%s' for agent '%s': %w", s.Key, agentSpec.ID, err)
+		}
+		envMap[s.Label] = val
+	}
+
+	for _, o := range regEntry.OAuth {
+		secretKey := oauth.StoreKey(orgID, o.Provider)
+		val, err := secretProvider.Resolve(ctx, secretKey)
+		if err != nil {
+			if err == secrets.ErrSecretNotFound && (o.Optional == nil || *o.Optional) {
+				continue
+			}
+			return fmt.Errorf("failed to resolve OAuth token for provider '%s', agent '%s': %w", o.Provider, agentSpec.ID, err)
+		}
+		envMap[o.Label] = val
+	}
+
+	return nil
 }

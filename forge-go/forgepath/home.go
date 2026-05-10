@@ -49,6 +49,28 @@ func OAuthProvidersConfigPath() string {
 	return DefaultOAuthProvidersConfigPath
 }
 
+var appNamespaceOverride string
+
+// SetAppNamespace sets the application namespace from a CLI flag or runtime
+// config. Takes precedence over FORGE_APP_NAMESPACE. Must be called before
+// any component reads AppNamespace.
+func SetAppNamespace(p string) {
+	appNamespaceOverride = p
+}
+
+// AppNamespace returns the application-wide namespace used for keychain
+// services, database namespaces, and similar identifiers.
+// Resolution order: SetAppNamespace() → FORGE_APP_NAMESPACE → "forge".
+func AppNamespace() string {
+	if appNamespaceOverride != "" {
+		return appNamespaceOverride
+	}
+	if p := os.Getenv("FORGE_APP_NAMESPACE"); p != "" {
+		return p
+	}
+	return "forge"
+}
+
 var (
 	mu       sync.Mutex
 	override string // set by CLI flag

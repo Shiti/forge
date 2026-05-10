@@ -134,8 +134,8 @@ func TestGuildSpecJSONRoundTrip_FullPayloadParity(t *testing.T) {
 func strPtr(v string) *string { return &v }
 
 func TestAgentNeedsJSONRoundTrip_FullPayloadParity(t *testing.T) {
-	requiredFalse := false
-	requiredTrue := true
+	optionalTrue := true
+	optionalFalse := false
 	needs := AgentNeeds{
 		ClassName: "rustic_ai.browser.agent.BrowserAgent",
 		Needs: NeedsSpec{
@@ -143,7 +143,7 @@ func TestAgentNeedsJSONRoundTrip_FullPayloadParity(t *testing.T) {
 				{
 					Key:      "OPENAI_API_KEY",
 					Label:    "OpenAI API Key",
-					Required: &requiredFalse,
+					Optional: &optionalTrue,
 				},
 			},
 			OAuth: []OAuthNeed{
@@ -151,7 +151,7 @@ func TestAgentNeedsJSONRoundTrip_FullPayloadParity(t *testing.T) {
 					Provider: "google",
 					Label:    "Google Account",
 					Scopes:   []string{"gmail.readonly", "drive.readonly"},
-					Required: &requiredTrue,
+					Optional: &optionalFalse,
 				},
 			},
 			Capabilities: []CapabilityNeed{

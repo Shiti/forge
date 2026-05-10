@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -11,9 +12,13 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// ErrNotConnected is returned by GetAccessToken when no token exists for the
+// given (orgID, providerID) pair.
+var ErrNotConnected = errors.New("oauth: provider not connected")
+
 // pendingFlow holds in-progress OAuth state between authorize and callback.
 type pendingFlow struct {
-	userID       string
+	orgID        string
 	providerID   string
 	clientID     string
 	clientSecret string
@@ -66,7 +71,7 @@ func NewManagerWithStore(cfg *ProvidersConfig, store TokenStore) *Manager {
 
 // GetAuthURL begins an OAuth2 PKCE flow for the given provider. It returns the
 // authorization URL to open in the browser and the opaque state token.
-func (m *Manager) GetAuthURL(userID, providerID, clientID, clientSecret, redirectURL string) (string, string, error) {
+func (m *Manager) GetAuthURL(orgID, providerID, clientID, clientSecret, redirectURL string) (string, string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -96,7 +101,7 @@ func (m *Manager) GetAuthURL(userID, providerID, clientID, clientSecret, redirec
 
 	m.cleanExpiredFlows()
 	m.pendingFlows[state] = &pendingFlow{
-		userID:       userID,
+		orgID:        orgID,
 		providerID:   providerID,
 		clientID:     clientID,
 		clientSecret: clientSecret,
@@ -162,7 +167,7 @@ func (m *Manager) ExchangeCode(ctx context.Context, code, state string) error {
 		return fmt.Errorf("exchanging code: %w", err)
 	}
 
-	return m.store.Save(flow.userID, flow.providerID, &tokenEntry{
+	return m.store.Save(flow.orgID, flow.providerID, &tokenEntry{
 		token:        token,
 		clientID:     flow.clientID,
 		clientSecret: flow.clientSecret,
@@ -172,14 +177,14 @@ func (m *Manager) ExchangeCode(ctx context.Context, code, state string) error {
 }
 
 // GetAccessToken returns a valid access token for the provider, refreshing it
-// if it will expire within 60 seconds.
-func (m *Manager) GetAccessToken(ctx context.Context, userID, providerID string) (string, error) {
+// if it expires within 60 seconds.
+func (m *Manager) GetAccessToken(ctx context.Context, orgID, providerID string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	entry, ok := m.store.Load(userID, providerID)
+	entry, ok := m.store.Load(orgID, providerID)
 	if !ok {
-		return "", fmt.Errorf("provider %q not connected for user %q", providerID, userID)
+		return "", fmt.Errorf("provider %q not connected for org %q: %w", providerID, orgID, ErrNotConnected)
 	}
 
 	if entry.token.Valid() && time.Until(entry.token.Expiry) > 60*time.Second {
@@ -197,34 +202,46 @@ func (m *Manager) GetAccessToken(ctx context.Context, userID, providerID string)
 		return "", fmt.Errorf("refreshing token: %w", err)
 	}
 	entry.token = newToken
-	_ = m.store.Save(userID, providerID, entry)
+	if err := m.store.Save(orgID, providerID, entry); err != nil {
+		return "", fmt.Errorf("persisting refreshed token: %w", err)
+	}
 	return newToken.AccessToken, nil
+}
+
+// SeedToken stores a non-expiring access token directly, bypassing the OAuth
+// flow. Intended for tests and local development only.
+func (m *Manager) SeedToken(orgID, providerID, accessToken string) {
+	_ = m.store.Save(orgID, providerID, &tokenEntry{
+		token: &oauth2.Token{
+			AccessToken: accessToken,
+			Expiry:      time.Now().Add(24 * time.Hour),
+		},
+	})
 }
 
 // Disconnect removes stored tokens for the provider. Returns true if the
 // provider was connected.
-func (m *Manager) Disconnect(userID, providerID string) bool {
-	return m.store.Delete(userID, providerID)
+func (m *Manager) Disconnect(orgID, providerID string) bool {
+	return m.store.Delete(orgID, providerID)
 }
 
 // ListProviders returns the status of all configured providers for the given
-// user. callbackBaseURL is used to compute the per-provider redirect URL shown
+// org. callbackBaseURL is used to compute the per-provider redirect URL shown
 // when registering the app with the third-party provider.
-func (m *Manager) ListProviders(userID, callbackBaseURL string) []ProviderStatus {
+func (m *Manager) ListProviders(orgID, callbackBaseURL string) []ProviderStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	userTokens := m.store.LoadAllForUser(userID)
 	out := make([]ProviderStatus, 0, len(m.providers))
 	for id, cfg := range m.providers {
-		entry, connected := userTokens[id]
+		entry, connected := m.store.Load(orgID, id)
 		ps := ProviderStatus{
 			ID:          id,
 			DisplayName: cfg.DisplayName,
 			Description: cfg.Description,
 			Connected:   connected,
 			Scopes:      cfg.Scopes,
-			CallbackURL: callbackBaseURL + "/oauth/providers/" + id + "/callback",
+			CallbackURL: callbackBaseURL + "/oauth/organizations/" + orgID + "/providers/" + id + "/callback",
 		}
 		if connected && !entry.token.Expiry.IsZero() {
 			exp := entry.token.Expiry
@@ -235,9 +252,9 @@ func (m *Manager) ListProviders(userID, callbackBaseURL string) []ProviderStatus
 	return out
 }
 
-// IsConnected reports whether the user has a stored token for the provider.
-func (m *Manager) IsConnected(userID, providerID string) bool {
-	_, ok := m.store.Load(userID, providerID)
+// IsConnected reports whether the org has a stored token for the provider.
+func (m *Manager) IsConnected(orgID, providerID string) bool {
+	_, ok := m.store.Load(orgID, providerID)
 	return ok
 }
 

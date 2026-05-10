@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rustic-ai/forge/forge-go/helper/idgen"
+	"gopkg.in/yaml.v3"
 )
 
 // AgentTag represents a tag that can be assigned to an agent.
@@ -69,11 +70,11 @@ func (d *DependencySpec) UnmarshalJSON(data []byte) error {
 type SecretNeed struct {
 	Key      string `json:"key" yaml:"key"`
 	Label    string `json:"label,omitempty" yaml:"label,omitempty"`
-	Required *bool  `json:"required,omitempty" yaml:"required,omitempty"`
+	Optional *bool  `json:"optional,omitempty" yaml:"optional,omitempty"`
 }
 
 func NewSecretNeed(key string) SecretNeed {
-	s := SecretNeed{Key: key}
+	s := SecretNeed{Key: key, Label: key}
 	s.Normalize()
 	return s
 }
@@ -81,8 +82,8 @@ func NewSecretNeed(key string) SecretNeed {
 func (s *SecretNeed) Normalize() {
 	s.Key = strings.TrimSpace(s.Key)
 	s.Label = strings.TrimSpace(s.Label)
-	if s.Required == nil {
-		s.Required = boolPtr(true)
+	if s.Label == "" {
+		s.Label = s.Key
 	}
 }
 
@@ -97,16 +98,33 @@ func (s *SecretNeed) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UnmarshalYAML accepts both plain string ("MY_KEY") and struct ({key: MY_KEY}) forms.
+func (s *SecretNeed) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		*s = NewSecretNeed(value.Value)
+		return nil
+	}
+	type alias SecretNeed
+	raw := alias(NewSecretNeed(""))
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*s = SecretNeed(raw)
+	s.Normalize()
+	return nil
+}
+
 type OAuthNeed struct {
 	Provider string   `json:"provider" yaml:"provider"`
 	Label    string   `json:"label,omitempty" yaml:"label,omitempty"`
 	Scopes   []string `json:"scopes,omitempty" yaml:"scopes,omitempty"`
-	Required *bool    `json:"required,omitempty" yaml:"required,omitempty"`
+	Optional *bool    `json:"optional,omitempty" yaml:"optional,omitempty"`
 }
 
 func NewOAuthNeed(provider string) OAuthNeed {
 	o := OAuthNeed{
 		Provider: provider,
+		Label:    strings.ToUpper(strings.TrimSpace(provider)) + "_TOKEN",
 		Scopes:   []string{},
 	}
 	o.Normalize()
@@ -116,21 +134,32 @@ func NewOAuthNeed(provider string) OAuthNeed {
 func (o *OAuthNeed) Normalize() {
 	o.Provider = strings.TrimSpace(o.Provider)
 	o.Label = strings.TrimSpace(o.Label)
+	if o.Label == "" {
+		o.Label = strings.ToUpper(o.Provider) + "_TOKEN"
+	}
 	if o.Scopes == nil {
 		o.Scopes = []string{}
 	}
 	for i := range o.Scopes {
 		o.Scopes[i] = strings.TrimSpace(o.Scopes[i])
 	}
-	if o.Required == nil {
-		o.Required = boolPtr(true)
-	}
 }
 
 func (o *OAuthNeed) UnmarshalJSON(data []byte) error {
 	type alias OAuthNeed
-	raw := alias(NewOAuthNeed(""))
+	raw := alias{Scopes: []string{}}
 	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*o = OAuthNeed(raw)
+	o.Normalize()
+	return nil
+}
+
+func (o *OAuthNeed) UnmarshalYAML(value *yaml.Node) error {
+	type alias OAuthNeed
+	raw := alias{Scopes: []string{}}
+	if err := value.Decode(&raw); err != nil {
 		return err
 	}
 	*o = OAuthNeed(raw)

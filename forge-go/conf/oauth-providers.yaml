@@ -31,7 +31,7 @@ providers:
 #    display_name: Slack
 #    description: Send messages and read channel history to integrate agents with your Slack workspace.
 #    scopes: [channels:history, channels:read, chat:write, files:read, users:read, team:read]
-#    use_pkce: false  # Slack does not support PKCE
+#    use_pkce: false
 
   # Custom service example — uncomment and fill in:
   # my-service:
