@@ -24,6 +24,9 @@ const (
 	OAuthProvidersConfigFile        = "oauth-providers.yaml"
 	OAuthProvidersConfigEnv         = "FORGE_OAUTH_PROVIDERS_CONFIG"
 	DefaultOAuthProvidersConfigPath = "conf/" + OAuthProvidersConfigFile
+
+	KeychainServiceEnv     = "FORGE_KEYCHAIN_SERVICE"
+	DefaultKeychainService = "forge"
 )
 
 // DependencyConfigPath returns the dependency config file path, checking the
@@ -42,33 +45,20 @@ func LocalModelCatalogPath() string {
 	return DefaultLocalModelCatalogPath
 }
 
+// KeychainService returns the service name used for OS keychain storage.
+// Resolution order: FORGE_KEYCHAIN_SERVICE env var → "forge".
+func KeychainService() string {
+	if v := os.Getenv(KeychainServiceEnv); v != "" {
+		return v
+	}
+	return DefaultKeychainService
+}
+
 func OAuthProvidersConfigPath() string {
 	if p := os.Getenv(OAuthProvidersConfigEnv); p != "" {
 		return p
 	}
 	return DefaultOAuthProvidersConfigPath
-}
-
-var appNamespaceOverride string
-
-// SetAppNamespace sets the application namespace from a CLI flag or runtime
-// config. Takes precedence over FORGE_APP_NAMESPACE. Must be called before
-// any component reads AppNamespace.
-func SetAppNamespace(p string) {
-	appNamespaceOverride = p
-}
-
-// AppNamespace returns the application-wide namespace used for keychain
-// services, database namespaces, and similar identifiers.
-// Resolution order: SetAppNamespace() → FORGE_APP_NAMESPACE → "forge".
-func AppNamespace() string {
-	if appNamespaceOverride != "" {
-		return appNamespaceOverride
-	}
-	if p := os.Getenv("FORGE_APP_NAMESPACE"); p != "" {
-		return p
-	}
-	return "forge"
 }
 
 var (

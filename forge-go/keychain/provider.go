@@ -36,7 +36,7 @@ type SecretProvider struct {
 }
 
 func NewSecretProvider() *SecretProvider {
-	return &SecretProvider{service: forgepath.AppNamespace()}
+	return &SecretProvider{service: forgepath.KeychainService()}
 }
 
 func (p *SecretProvider) Resolve(ctx context.Context, key string) (string, error) {
