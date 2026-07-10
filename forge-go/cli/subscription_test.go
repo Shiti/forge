@@ -153,3 +153,21 @@ func waitClosed(t *testing.T, done <-chan struct{}, msg string) {
 		t.Fatal(msg)
 	}
 }
+
+func TestSubscribe(t *testing.T) {
+	r, _ := newMiniredisRuntime(t)
+	spec := &protocol.GuildSpec{
+		Agents: []protocol.AgentSpec{{Name: "A", AdditionalTopics: []string{"extra_topic"}}},
+	}
+
+	sub, err := r.Subscribe("g1", "u1", spec)
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	if sub.Messages() == nil || sub.Errors() == nil {
+		t.Error("expected non-nil Messages/Errors channels")
+	}
+	if err := sub.Close(); err != nil {
+		t.Errorf("Close: %v", err)
+	}
+}

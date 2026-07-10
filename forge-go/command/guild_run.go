@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,6 +18,22 @@ import (
 	"github.com/rustic-ai/forge/forge-go/protocol"
 	"github.com/spf13/cobra"
 )
+
+// guildRuntime is the subset of *cli.GuildRuntime that the display/publish
+// helpers depend on. Defining it here lets the helpers be unit-tested with a
+// fake; *cli.GuildRuntime satisfies it.
+type guildRuntime interface {
+	GetAgentStatuses(guildID string) (map[string]cli.AgentStatus, error)
+	GetAgentName(agentID string) string
+	PublishMessage(namespace, topic string, msg *protocol.Message) error
+}
+
+// messageSource is the subset of *cli.GuildSubscription that displayMessages
+// consumes; *cli.GuildSubscription satisfies it.
+type messageSource interface {
+	Messages() <-chan *protocol.Message
+	Errors() <-chan error
+}
 
 func runGuildREPL(cmd *cobra.Command, args []string) error {
 	guildFile := args[0]
@@ -107,36 +124,12 @@ func runGuildREPL(cmd *cobra.Command, args []string) error {
 	// Wait a moment for agents to fully start
 	time.Sleep(2 * time.Second)
 
-	// Determine the topic to send user messages to
-	// For guilds with routing rules, extract the destination from the first route
-	// Otherwise use the first agent's topic (simple echo-style guilds)
-	userMessageTopic := "default_topic"
-	useWrappedMessages := false
-	hasRoutingRules := spec.Routes != nil && len(spec.Routes.Steps) > 0
-
-	if hasRoutingRules && len(spec.Routes.Steps) > 0 {
-		// Guild has routing - check if it uses UserProxyAgent
-		firstRoute := spec.Routes.Steps[0]
-		if firstRoute.AgentType != nil && *firstRoute.AgentType == "rustic_ai.core.agents.utils.user_proxy_agent.UserProxyAgent" {
-			// This guild uses UserProxyAgent - we need to create one and send wrapped messages
-			useWrappedMessages = true
-			// Messages go to user:{userID} and UserProxyAgent will route them
-			// according to the guild routing rules
-		} else if firstRoute.Destination != nil {
-			// Send directly to the route destination
-			topics := firstRoute.Destination.Topics.ToSlice()
-			if len(topics) > 0 {
-				userMessageTopic = topics[0]
-			}
-		}
-	} else if len(spec.Agents) > 0 && len(spec.Agents[0].AdditionalTopics) > 0 {
-		// Simple guild without routing - send directly to first agent
-		userMessageTopic = spec.Agents[0].AdditionalTopics[0]
-	}
+	// Determine the topic to send user messages to.
+	userMessageTopic, useWrappedMessages := selectUserMessageTopic(spec)
 
 	// Show agent status
 	if !guildQuiet {
-		if err := showAgentStatus(runtime, guildID); err != nil {
+		if err := showAgentStatus(os.Stdout, runtime, guildID); err != nil {
 			fmt.Printf("⚠️  Warning: could not get agent status: %v\n", err)
 		}
 
@@ -204,7 +197,7 @@ func runGuildREPL(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Start message display goroutine
-	go displayMessages(ctx, sub, runtime, config.UserID, guildVerbose, guildShowRouting)
+	go displayMessages(ctx, os.Stdout, sub, runtime, config.UserID, guildVerbose, guildShowRouting)
 
 	// Interactive REPL
 	fmt.Println("\n" + strings.Repeat("=", 70))
@@ -268,7 +261,7 @@ func runGuildREPL(cmd *cobra.Command, args []string) error {
 					fmt.Println("👋 Goodbye!")
 					return nil
 				case "/status":
-					if err := showAgentStatus(runtime, guildID); err != nil {
+					if err := showAgentStatus(os.Stdout, runtime, guildID); err != nil {
 						fmt.Printf("⚠️  Warning: could not get agent status: %v\n", err)
 					}
 					continue
@@ -287,22 +280,22 @@ func runGuildREPL(cmd *cobra.Command, args []string) error {
 			}
 
 			// Send chat message
-			if err := sendChatMessage(runtime, guildID, config.UserID, config.UserName, line, userMessageTopic, useWrappedMessages); err != nil {
+			if err := sendChatMessage(os.Stdout, runtime, guildID, config.UserID, config.UserName, line, userMessageTopic, useWrappedMessages); err != nil {
 				fmt.Printf("❌ Error sending message: %v\n", err)
 			}
 		}
 	}
 }
 
-func showAgentStatus(runtime *cli.GuildRuntime, guildID string) error {
+func showAgentStatus(w io.Writer, runtime guildRuntime, guildID string) error {
 	statuses, err := runtime.GetAgentStatuses(guildID)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("\n🤖 Agent Status:")
+	fmt.Fprintln(w, "\n🤖 Agent Status:")
 	if len(statuses) == 0 {
-		fmt.Println("   No agents found")
+		fmt.Fprintln(w, "   No agents found")
 		return nil
 	}
 
@@ -322,17 +315,46 @@ func showAgentStatus(runtime *cli.GuildRuntime, guildID string) error {
 		// Get agent display name
 		agentName := runtime.GetAgentName(agentID)
 		if agentName != agentID {
-			fmt.Printf("   %s %s (PID: %d) - %s\n", stateIcon, agentName, status.PID, status.State)
+			fmt.Fprintf(w, "   %s %s (PID: %d) - %s\n", stateIcon, agentName, status.PID, status.State)
 		} else {
-			fmt.Printf("   %s %s (PID: %d) - %s\n", stateIcon, agentID, status.PID, status.State)
+			fmt.Fprintf(w, "   %s %s (PID: %d) - %s\n", stateIcon, agentID, status.PID, status.State)
 		}
 	}
-	fmt.Println()
+	fmt.Fprintln(w)
 
 	return nil
 }
 
-func sendChatMessage(runtime *cli.GuildRuntime, guildID, userID, userName, text, topic string, useWrapped bool) error {
+// selectUserMessageTopic decides which topic user input should be published to
+// and whether messages must be wrapped for a UserProxyAgent. Guilds with a
+// UserProxyAgent first route use wrapped messages; otherwise the first route's
+// destination topic (or, with no routing, the first agent's additional topic) is
+// used, falling back to "default_topic".
+func selectUserMessageTopic(spec *protocol.GuildSpec) (topic string, useWrapped bool) {
+	topic = "default_topic"
+
+	if spec.Routes != nil && len(spec.Routes.Steps) > 0 {
+		firstRoute := spec.Routes.Steps[0]
+		if firstRoute.AgentType != nil && *firstRoute.AgentType == "rustic_ai.core.agents.utils.user_proxy_agent.UserProxyAgent" {
+			// Messages go to user:{userID} and the UserProxyAgent routes them.
+			return topic, true
+		}
+		if firstRoute.Destination != nil {
+			if topics := firstRoute.Destination.Topics.ToSlice(); len(topics) > 0 {
+				return topics[0], false
+			}
+		}
+		return topic, false
+	}
+
+	if len(spec.Agents) > 0 && len(spec.Agents[0].AdditionalTopics) > 0 {
+		return spec.Agents[0].AdditionalTopics[0], false
+	}
+
+	return topic, false
+}
+
+func sendChatMessage(w io.Writer, runtime guildRuntime, guildID, userID, userName, text, topic string, useWrapped bool) error {
 	var msg *protocol.Message
 	var err error
 	var actualTopic string
@@ -354,7 +376,7 @@ func sendChatMessage(runtime *cli.GuildRuntime, guildID, userID, userName, text,
 		actualTopic = topic
 	}
 
-	fmt.Printf("📤 Sending to topic: %s (format: %s)\n", actualTopic, msg.Format)
+	fmt.Fprintf(w, "📤 Sending to topic: %s (format: %s)\n", actualTopic, msg.Format)
 	if err := runtime.PublishMessage(guildID, actualTopic, msg); err != nil {
 		return fmt.Errorf("failed to publish: %w", err)
 	}
@@ -362,7 +384,7 @@ func sendChatMessage(runtime *cli.GuildRuntime, guildID, userID, userName, text,
 	return nil
 }
 
-func displayMessages(ctx context.Context, sub *cli.GuildSubscription, runtime *cli.GuildRuntime, userID string, verbose, showRouting bool) {
+func displayMessages(ctx context.Context, w io.Writer, sub messageSource, runtime guildRuntime, userID string, verbose, showRouting bool) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -371,21 +393,21 @@ func displayMessages(ctx context.Context, sub *cli.GuildSubscription, runtime *c
 			if !ok {
 				return
 			}
-			printMessage(msg, runtime, userID, verbose, showRouting)
+			printMessage(w, msg, runtime, userID, verbose, showRouting)
 		case err, ok := <-sub.Errors():
 			if !ok {
 				return
 			}
-			fmt.Printf("\n❌ Subscription error: %v\n> ", err)
+			fmt.Fprintf(w, "\n❌ Subscription error: %v\n> ", err)
 		}
 	}
 }
 
-func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID string, verbose, showRouting bool) {
+func printMessage(w io.Writer, msg *protocol.Message, runtime guildRuntime, userID string, verbose, showRouting bool) {
 	// Debug: show all message formats in verbose mode only
 	if verbose {
 		topicsDebug := msg.Topics.ToSlice()
-		fmt.Printf("\n[DEBUG] Format: %-50s Topics: %v\n", msg.Format, topicsDebug)
+		fmt.Fprintf(w, "\n[DEBUG] Format: %-50s Topics: %v\n", msg.Format, topicsDebug)
 	}
 
 	// Skip internal system messages unless verbose
@@ -436,8 +458,8 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 	topicStr := strings.Join(topics, ", ")
 
 	// Message header
-	fmt.Println("\n" + strings.Repeat("─", 70))
-	fmt.Printf("📨 [%s] %s\n", timestamp, topicStr)
+	fmt.Fprintln(w, "\n"+strings.Repeat("─", 70))
+	fmt.Fprintf(w, "📨 [%s] %s\n", timestamp, topicStr)
 
 	// Get sender name - use agent name map if available
 	senderName := ""
@@ -455,10 +477,10 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 
 	// Display sender - just the name, not the ID (cleaner)
 	if senderName != "" {
-		fmt.Printf("   From: %s\n", senderName)
+		fmt.Fprintf(w, "   From: %s\n", senderName)
 	} else if senderID != "" {
 		// Fallback to ID if no name
-		fmt.Printf("   From: %s\n", senderID)
+		fmt.Fprintf(w, "   From: %s\n", senderID)
 	}
 
 	// Message content
@@ -468,7 +490,7 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 			// Pretty print payload
 			if verbose {
 				prettyPayload, _ := json.MarshalIndent(payload, "   ", "  ")
-				fmt.Printf("   Payload:\n   %s\n", string(prettyPayload))
+				fmt.Fprintf(w, "   Payload:\n   %s\n", string(prettyPayload))
 			} else {
 				// Show condensed version - try different message formats
 				displayed := false
@@ -479,7 +501,7 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 						if content, ok := firstMsg["content"].([]any); ok && len(content) > 0 {
 							if textContent, ok := content[0].(map[string]any); ok {
 								if text, ok := textContent["text"].(string); ok {
-									fmt.Printf("   💬 %s\n", text)
+									fmt.Fprintf(w, "   💬 %s\n", text)
 									displayed = true
 								}
 							}
@@ -493,7 +515,7 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 						if choice, ok := choices[0].(map[string]any); ok {
 							if message, ok := choice["message"].(map[string]any); ok {
 								if content, ok := message["content"].(string); ok {
-									fmt.Printf("   💬 %s\n", content)
+									fmt.Fprintf(w, "   💬 %s\n", content)
 									displayed = true
 								}
 							}
@@ -504,7 +526,7 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 				// Try simple text field
 				if !displayed {
 					if text, ok := payload["text"].(string); ok {
-						fmt.Printf("   💬 %s\n", text)
+						fmt.Fprintf(w, "   💬 %s\n", text)
 						displayed = true
 					}
 				}
@@ -512,7 +534,7 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 				// Try content field directly (common in some formats)
 				if !displayed {
 					if content, ok := payload["content"].(string); ok {
-						fmt.Printf("   💬 %s\n", content)
+						fmt.Fprintf(w, "   💬 %s\n", content)
 						displayed = true
 					}
 				}
@@ -521,9 +543,9 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 				if !displayed {
 					payloadBytes, _ := json.Marshal(payload)
 					if len(payloadBytes) > 150 {
-						fmt.Printf("   📄 %s...\n", string(payloadBytes[:150]))
+						fmt.Fprintf(w, "   📄 %s...\n", string(payloadBytes[:150]))
 					} else {
-						fmt.Printf("   📄 %s\n", string(payloadBytes))
+						fmt.Fprintf(w, "   📄 %s\n", string(payloadBytes))
 					}
 				}
 			}
@@ -532,7 +554,7 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 
 	// Routing information
 	if showRouting && len(msg.MessageHistory) > 0 {
-		fmt.Println("   🔀 Routing History:")
+		fmt.Fprintln(w, "   🔀 Routing History:")
 		for i, entry := range msg.MessageHistory {
 			agent := ""
 			agentID := ""
@@ -571,18 +593,18 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID strin
 				toTopics = fmt.Sprintf(" → %s", strings.Join(entry.ToTopics, ", "))
 			}
 
-			fmt.Printf("      %d. %s (%s)%s%s%s\n",
+			fmt.Fprintf(w, "      %d. %s (%s)%s%s%s\n",
 				i+1, agent, processor, fromTopic, toTopics, reasonStr)
 		}
 	}
 
 	if verbose && msg.RoutingSlip != nil {
-		fmt.Println("   📋 Routing Slip:")
+		fmt.Fprintln(w, "   📋 Routing Slip:")
 		slipBytes, _ := json.MarshalIndent(msg.RoutingSlip, "      ", "  ")
-		fmt.Printf("      %s\n", string(slipBytes))
+		fmt.Fprintf(w, "      %s\n", string(slipBytes))
 	}
 
-	fmt.Print("> ")
+	fmt.Fprint(w, "> ")
 }
 
 func findForgeRoot(startDir string) string {
