@@ -21,9 +21,10 @@ func inspectGuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Check if this is a blueprint wrapper (has a "spec" field)
-	var checker map[string]interface{}
-	json.Unmarshal(content, &checker)
+	// Check if this is a blueprint wrapper (has a "spec" field). Best-effort JSON
+	// sniff: a parse failure leaves checker nil and falls through to the parser.
+	var checker map[string]any
+	_ = json.Unmarshal(content, &checker)
 
 	var spec *protocol.GuildSpec
 	if specField, hasSpec := checker["spec"]; hasSpec && specField != nil {
@@ -110,7 +111,7 @@ func inspectGuild(cmd *cobra.Command, args []string) error {
 			}
 
 			if rule.Transformer != nil {
-				fmt.Printf("     Transformer: present\n")
+				fmt.Println("     Transformer: present")
 			}
 
 			fmt.Println()
@@ -118,7 +119,7 @@ func inspectGuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display dependencies
-	if spec.DependencyMap != nil && len(spec.DependencyMap) > 0 {
+	if len(spec.DependencyMap) > 0 {
 		fmt.Printf("Dependencies (%d):\n", len(spec.DependencyMap))
 		for name, dep := range spec.DependencyMap {
 			fmt.Printf("  - %s: %s\n", name, dep.ClassName)
@@ -127,7 +128,7 @@ func inspectGuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display properties
-	if spec.Properties != nil && len(spec.Properties) > 0 {
+	if len(spec.Properties) > 0 {
 		fmt.Println("Properties:")
 		propsJSON, _ := json.MarshalIndent(spec.Properties, "  ", "  ")
 		fmt.Printf("  %s\n", string(propsJSON))

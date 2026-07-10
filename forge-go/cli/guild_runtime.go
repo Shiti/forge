@@ -241,7 +241,7 @@ func (r *GuildRuntime) seedAgentRegistry() error {
 	}
 
 	var registry struct {
-		Entries []map[string]interface{} `yaml:"entries"`
+		Entries []map[string]any `yaml:"entries"`
 	}
 	if err := yaml.Unmarshal(content, &registry); err != nil {
 		return fmt.Errorf("failed to parse registry: %w", err)
@@ -257,12 +257,12 @@ func (r *GuildRuntime) seedAgentRegistry() error {
 		}
 
 		// Convert to catalog agent entry format
-		agentEntry := map[string]interface{}{
+		agentEntry := map[string]any{
 			"qualified_class_name": className,
 			"agent_name":           agent["id"], // API expects agent_name
 			"agent_doc":            agent["description"],
-			"agent_props_schema":   map[string]interface{}{}, // Empty schema for now
-			"message_handlers":     map[string]interface{}{}, // Empty for now
+			"agent_props_schema":   map[string]any{},
+			"message_handlers":     map[string]any{},
 		}
 
 		// POST to /rustic/catalog/agents
@@ -285,9 +285,11 @@ func (r *GuildRuntime) LoadGuild(specPath string) (*protocol.GuildSpec, error) {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Check if this is a blueprint wrapper (has a "spec" field)
-	var checker map[string]interface{}
-	json.Unmarshal(content, &checker)
+	// Check if this is a blueprint wrapper (has a "spec" field). This is a
+	// best-effort JSON sniff: a parse failure (e.g. a YAML spec) simply leaves
+	// checker nil and falls through to the direct parser below.
+	var checker map[string]any
+	_ = json.Unmarshal(content, &checker)
 
 	if specField, hasSpec := checker["spec"]; hasSpec && specField != nil {
 		// This is a blueprint wrapper - extract the nested spec
@@ -501,9 +503,9 @@ func (r *GuildRuntime) waitForGuildRunning(guildID string, timeout time.Duration
 	return fmt.Errorf("timeout waiting for guild to be running")
 }
 
-func (r *GuildRuntime) createBlueprint(spec *protocol.GuildSpec) (map[string]interface{}, error) {
+func (r *GuildRuntime) createBlueprint(spec *protocol.GuildSpec) (map[string]any, error) {
 	// Convert spec to blueprint format
-	blueprint := map[string]interface{}{
+	blueprint := map[string]any{
 		"name":            spec.Name,
 		"description":     spec.Description,
 		"spec":            spec,     // API expects "spec" not "guild_spec"
@@ -512,7 +514,7 @@ func (r *GuildRuntime) createBlueprint(spec *protocol.GuildSpec) (map[string]int
 		"organization_id": r.config.OrgID,
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := r.postJSON(r.rusticBase+"/catalog/blueprints/", blueprint, &result); err != nil {
 		return nil, err
 	}
@@ -520,13 +522,13 @@ func (r *GuildRuntime) createBlueprint(spec *protocol.GuildSpec) (map[string]int
 }
 
 func (r *GuildRuntime) launchFromBlueprint(blueprintID, guildName string) (string, error) {
-	launchReq := map[string]interface{}{
+	launchReq := map[string]any{
 		"guild_name": guildName,
 		"user_id":    r.config.UserID,
 		"org_id":     r.config.OrgID,
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	url := fmt.Sprintf("%s/catalog/blueprints/%s/guilds", r.rusticBase, blueprintID)
 	if err := r.postJSON(url, launchReq, &result); err != nil {
 		return "", err
@@ -540,7 +542,7 @@ func (r *GuildRuntime) launchFromBlueprint(blueprintID, guildName string) (strin
 	return guildID, nil
 }
 
-func (r *GuildRuntime) postJSON(url string, payload, result interface{}) error {
+func (r *GuildRuntime) postJSON(url string, payload, result any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -576,8 +578,15 @@ func (r *GuildRuntime) postJSON(url string, payload, result interface{}) error {
 
 func (r *GuildRuntime) kill() {
 	if r.serverCmd != nil && r.serverCmd.Process != nil {
-		syscall.Kill(-r.serverCmd.Process.Pid, syscall.SIGKILL)
-		r.serverCmd.Wait()
+		// SIGKILL the whole process group (the server is started with Setpgid).
+		// Both calls are best-effort during teardown: log failures rather than
+		// propagate, since there is nothing left to recover.
+		if err := syscall.Kill(-r.serverCmd.Process.Pid, syscall.SIGKILL); err != nil {
+			slog.Debug("failed to signal server process group", "error", err)
+		}
+		if err := r.serverCmd.Wait(); err != nil {
+			slog.Debug("server process exited with error", "error", err)
+		}
 	}
 }
 

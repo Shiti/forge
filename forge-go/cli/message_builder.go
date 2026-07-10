@@ -34,13 +34,13 @@ func BuildChatMessage(userID, userName, text, topic string) (*protocol.Message, 
 	}
 
 	// Create chat completion request payload
-	payload := map[string]interface{}{
-		"messages": []interface{}{
-			map[string]interface{}{
+	payload := map[string]any{
+		"messages": []any{
+			map[string]any{
 				"role": "user",
 				"name": userID,
-				"content": []interface{}{
-					map[string]interface{}{
+				"content": []any{
+					map[string]any{
 						"type": "text",
 						"text": text,
 					},
@@ -74,7 +74,7 @@ func BuildChatMessage(userID, userName, text, topic string) (*protocol.Message, 
 }
 
 // BuildSystemMessage creates a system message
-func BuildSystemMessage(topic string, payload map[string]interface{}, format string) (*protocol.Message, error) {
+func BuildSystemMessage(topic string, payload map[string]any, format string) (*protocol.Message, error) {
 	gen, err := getIDGen()
 	if err != nil {
 		return nil, fmt.Errorf("failed to init ID generator: %w", err)
@@ -121,7 +121,7 @@ func BuildHealthCheckMessage(userID, topic string) (*protocol.Message, error) {
 		return nil, fmt.Errorf("failed to generate message ID: %w", err)
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"dummy": 1,
 	}
 	payloadBytes, err := json.Marshal(payload)
@@ -200,7 +200,7 @@ func BuildUserProxyCreationRequest(userID, userName string) (*protocol.Message, 
 		return nil, fmt.Errorf("failed to generate message ID: %w", err)
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"user_id":   userID,
 		"user_name": userName,
 	}

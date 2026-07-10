@@ -22,9 +22,10 @@ func validateGuild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Check if this is a blueprint wrapper (has a "spec" field)
-	var checker map[string]interface{}
-	json.Unmarshal(content, &checker)
+	// Check if this is a blueprint wrapper (has a "spec" field). Best-effort JSON
+	// sniff: a parse failure leaves checker nil and falls through to the parser.
+	var checker map[string]any
+	_ = json.Unmarshal(content, &checker)
 
 	var spec *protocol.GuildSpec
 	if specField, hasSpec := checker["spec"]; hasSpec && specField != nil {

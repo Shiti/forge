@@ -99,7 +99,7 @@ func runGuildREPL(cmd *cobra.Command, args []string) error {
 	}
 
 	if !guildQuiet {
-		fmt.Printf("\n✅ Guild launched successfully!\n")
+		fmt.Print("\n✅ Guild launched successfully!\n")
 		fmt.Printf("   Guild ID: %s\n", guildID)
 		fmt.Println()
 	}
@@ -204,7 +204,7 @@ func runGuildREPL(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Start message display goroutine
-	go displayMessages(ctx, sub, runtime, spec, config.UserID, guildVerbose, guildShowRouting)
+	go displayMessages(ctx, sub, runtime, config.UserID, guildVerbose, guildShowRouting)
 
 	// Interactive REPL
 	fmt.Println("\n" + strings.Repeat("=", 70))
@@ -268,7 +268,9 @@ func runGuildREPL(cmd *cobra.Command, args []string) error {
 					fmt.Println("👋 Goodbye!")
 					return nil
 				case "/status":
-					showAgentStatus(runtime, guildID)
+					if err := showAgentStatus(runtime, guildID); err != nil {
+						fmt.Printf("⚠️  Warning: could not get agent status: %v\n", err)
+					}
 					continue
 				case "/help":
 					fmt.Println("\nCommands:")
@@ -360,7 +362,7 @@ func sendChatMessage(runtime *cli.GuildRuntime, guildID, userID, userName, text,
 	return nil
 }
 
-func displayMessages(ctx context.Context, sub *cli.GuildSubscription, runtime *cli.GuildRuntime, spec *protocol.GuildSpec, userID string, verbose, showRouting bool) {
+func displayMessages(ctx context.Context, sub *cli.GuildSubscription, runtime *cli.GuildRuntime, userID string, verbose, showRouting bool) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -369,7 +371,7 @@ func displayMessages(ctx context.Context, sub *cli.GuildSubscription, runtime *c
 			if !ok {
 				return
 			}
-			printMessage(msg, runtime, spec, userID, verbose, showRouting)
+			printMessage(msg, runtime, userID, verbose, showRouting)
 		case err, ok := <-sub.Errors():
 			if !ok {
 				return
@@ -379,7 +381,7 @@ func displayMessages(ctx context.Context, sub *cli.GuildSubscription, runtime *c
 	}
 }
 
-func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, spec *protocol.GuildSpec, userID string, verbose, showRouting bool) {
+func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, userID string, verbose, showRouting bool) {
 	// Debug: show all message formats in verbose mode only
 	if verbose {
 		topicsDebug := msg.Topics.ToSlice()
@@ -461,7 +463,7 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, spec *protoc
 
 	// Message content
 	if len(msg.Payload) > 0 {
-		var payload map[string]interface{}
+		var payload map[string]any
 		if err := json.Unmarshal(msg.Payload, &payload); err == nil {
 			// Pretty print payload
 			if verbose {
@@ -472,10 +474,10 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, spec *protoc
 				displayed := false
 
 				// Try chatCompletionRequest format (user messages)
-				if messages, ok := payload["messages"].([]interface{}); ok && len(messages) > 0 {
-					if firstMsg, ok := messages[0].(map[string]interface{}); ok {
-						if content, ok := firstMsg["content"].([]interface{}); ok && len(content) > 0 {
-							if textContent, ok := content[0].(map[string]interface{}); ok {
+				if messages, ok := payload["messages"].([]any); ok && len(messages) > 0 {
+					if firstMsg, ok := messages[0].(map[string]any); ok {
+						if content, ok := firstMsg["content"].([]any); ok && len(content) > 0 {
+							if textContent, ok := content[0].(map[string]any); ok {
 								if text, ok := textContent["text"].(string); ok {
 									fmt.Printf("   💬 %s\n", text)
 									displayed = true
@@ -487,9 +489,9 @@ func printMessage(msg *protocol.Message, runtime *cli.GuildRuntime, spec *protoc
 
 				// Try chatCompletionResponse format (agent responses)
 				if !displayed {
-					if choices, ok := payload["choices"].([]interface{}); ok && len(choices) > 0 {
-						if choice, ok := choices[0].(map[string]interface{}); ok {
-							if message, ok := choice["message"].(map[string]interface{}); ok {
+					if choices, ok := payload["choices"].([]any); ok && len(choices) > 0 {
+						if choice, ok := choices[0].(map[string]any); ok {
+							if message, ok := choice["message"].(map[string]any); ok {
 								if content, ok := message["content"].(string); ok {
 									fmt.Printf("   💬 %s\n", content)
 									displayed = true
